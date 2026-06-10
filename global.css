@@ -1,0 +1,32 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+@theme {
+  --color-sf-bg: #000000;
+  --color-sf-bg-2: #1C1C1E;
+  --color-sf-blue: #0A84FF;
+  --color-sf-text: #FFFFFF;
+  --color-sf-text-2: #EBEBF5;
+  --color-sf-gray: #8E8E93;
+  --color-sf-green: #30D158;
+  --color-sf-red: #FF453A;
+}
+/* Platform-specific font families */
+@media android {
+  :root {
+    --font-mono: monospace;
+    --font-rounded: normal;
+    --font-serif: serif;
+    --font-sans: normal;
+  }
+}
+
+@media ios {
+  :root {
+    --font-mono: ui-monospace;
+    --font-serif: ui-serif;
+    --font-sans: system-ui;
+    --font-rounded: ui-rounded;
+  }
+}
