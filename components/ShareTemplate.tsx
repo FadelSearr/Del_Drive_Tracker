@@ -17,61 +17,81 @@ export default function ShareTemplate({ data, backgroundImageUri }: ShareTemplat
     <View style={[{ width, height }]} className="bg-[#0F0F0F] items-center relative overflow-hidden">
       
       {/* Background Photo from Gallery */}
-      {backgroundImageUri && (
+      {backgroundImageUri ? (
         <>
           <Image 
             source={{ uri: backgroundImageUri }} 
             className="absolute inset-0 w-full h-full"
-            style={{ opacity: 0.6 }}
+            style={{ opacity: 0.7 }}
           />
-          {/* Subtle gradient overlay to ensure text contrast */}
-          <View className="absolute inset-0 bg-black/30" />
+          {/* Vignette / Gradient overlay for premium feel */}
+          <View className="absolute inset-0 bg-black/40" />
         </>
-      )}
-
-      {/* Grid pattern overlay (chess-like) if no background is set, or as a texture */}
-      {!backgroundImageUri && (
-        <View className="absolute inset-0 flex-row flex-wrap opacity-10">
-           {Array.from({ length: 24 }).map((_, i) => (
-             <View key={i} style={{ width: width / 3, height: width / 3 }} className={i % 2 === 0 ? 'bg-white' : 'bg-transparent'} />
-           ))}
+      ) : (
+        <View className="absolute inset-0 bg-[#0F0F0F]">
+          {/* Abstract Grid Pattern for empty background */}
+          <View className="absolute inset-0 flex-row flex-wrap opacity-10">
+             {Array.from({ length: 48 }).map((_, i) => (
+               <View key={i} style={{ width: width / 4, height: width / 4 }} className={i % 2 === 0 ? 'bg-white' : 'bg-transparent'} />
+             ))}
+          </View>
         </View>
       )}
       
       {/* Top Header */}
-      <View className="mt-20 items-center">
-        <Text className="text-white font-black text-4xl tracking-[0.1em] italic">OPEN ROAD</Text>
+      <View className="mt-16 items-center">
+        <View className="px-6 py-2 border-y border-white/20">
+          <Text className="text-white font-black text-3xl tracking-[0.2em] italic">OPEN ROAD</Text>
+        </View>
+        <Text className="text-white/50 text-[10px] font-bold tracking-widest uppercase mt-4">{data.date}</Text>
       </View>
 
       {/* Main Track Record (Polyline Only) */}
       <View className="flex-1 w-full justify-center items-center">
-        <View className="w-[85%] aspect-square pointer-events-none">
+        <View className="w-[85%] aspect-square">
           <LeafletMap 
             interactive={false}
             coordinates={data.coordinates || []}
+            mapMode="follow"
           />
         </View>
       </View>
 
-      {/* Bottom Stats Container */}
-      <View className="w-full px-8 pb-16">
-        <View className="flex-row justify-between items-end">
-            
-            <View className="items-center">
-                <Text className="text-gray-400 text-[10px] font-bold tracking-widest uppercase mb-2">Distance</Text>
-                <Text className="text-white font-black text-xl italic">{data.distance.toUpperCase()}</Text>
+      {/* Stats Container - Grid Style */}
+      <View className="w-full px-6 pb-12">
+        <View className="bg-black/50 backdrop-blur-md rounded-[32px] p-6 border border-white/10">
+          
+          {/* Main Row: Distance & Time */}
+          <View className="flex-row justify-between mb-6 pb-6 border-b border-white/10">
+            <View>
+              <Text className="text-white/40 text-[9px] font-bold tracking-[0.2em] uppercase mb-1">Distance</Text>
+              <Text className="text-white font-black text-2xl italic">{data.distance}</Text>
             </View>
-
-            <View className="items-center">
-                <Text className="text-gray-400 text-[10px] font-bold tracking-widest uppercase mb-2">Duration</Text>
-                <Text className="text-white font-black text-xl italic">{data.duration}</Text>
+            <View className="items-end">
+              <Text className="text-white/40 text-[9px] font-bold tracking-[0.2em] uppercase mb-1">Time</Text>
+              <Text className="text-white font-black text-2xl italic">{data.duration}</Text>
             </View>
+          </View>
 
-            <View className="items-center">
-                <Text className="text-gray-400 text-[10px] font-bold tracking-widest uppercase mb-2">Avg Speed</Text>
-                <Text className="text-white font-black text-xl italic">{data.avgSpeed.toUpperCase()}</Text>
+          {/* Secondary Row: Top & Avg Speed */}
+          <View className="flex-row justify-between">
+            <View>
+              <Text className="text-white/40 text-[9px] font-bold tracking-[0.2em] uppercase mb-1">Top Speed</Text>
+              <Text className="text-white font-black text-xl italic">{data.topSpeed}</Text>
             </View>
+            <View className="items-end">
+              <Text className="text-white/40 text-[9px] font-bold tracking-[0.2em] uppercase mb-1">Avg Speed</Text>
+              <Text className="text-white font-black text-xl italic">{data.avgSpeed}</Text>
+            </View>
+          </View>
 
+        </View>
+
+        {/* Branding Footer */}
+        <View className="mt-6 flex-row items-center justify-center opacity-40">
+           <View className="h-[1px] flex-1 bg-white/50" />
+           <Text className="text-white text-[8px] font-bold tracking-[0.3em] mx-4 uppercase">Track Record</Text>
+           <View className="h-[1px] flex-1 bg-white/50" />
         </View>
       </View>
 
