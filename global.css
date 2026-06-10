@@ -1,5 +1,6 @@
+@import "tailwindcss";
 
-:root {
+@theme {
   --color-sf-bg: #000000;
   --color-sf-bg-2: #1C1C1E;
   --color-sf-blue: #0A84FF;
@@ -9,4 +10,3 @@
   --color-sf-green: #30D158;
   --color-sf-red: #FF453A;
 }
-

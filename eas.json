@@ -13,11 +13,17 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "LIGHTNINGCSS_SKIP_MINIFY": "1"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "env": {
+        "LIGHTNINGCSS_SKIP_MINIFY": "1"
+      },
       "android": {
         "buildType": "app-bundle"
       }
