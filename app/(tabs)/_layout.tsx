@@ -1,90 +1,78 @@
 import React from 'react';
-import { FontAwesome, Feather } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { Platform, StyleSheet, View } from 'react-native';
-
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: any;
-}) {
-  return <FontAwesome size={24} style={{ marginBottom: -3 }} {...props} />;
-}
+import { Platform, StyleSheet } from 'react-native';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme() ?? 'light';
+  const colorScheme = useColorScheme() ?? 'dark';
   const themeColors = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: themeColors.primary,
-        tabBarInactiveTintColor: themeColors.tabIconDefault,
+        tabBarActiveTintColor: '#4B7EFF',
+        tabBarInactiveTintColor: 'rgba(255,255,255,0.3)',
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: themeColors.surface,
-          borderTopColor: themeColors.border,
+          backgroundColor: '#0C0C18',
+          borderTopColor: 'rgba(255,255,255,0.06)',
           borderTopWidth: StyleSheet.hairlineWidth,
-          elevation: 0, // Android
-          shadowOpacity: 0, // iOS
+          elevation: 0,
+          shadowOpacity: 0,
           height: Platform.OS === 'ios' ? 88 : 68,
           paddingBottom: Platform.OS === 'ios' ? 28 : 12,
-          paddingTop: 12,
+          paddingTop: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-          marginTop: 4,
+          fontSize: 9,
+          fontWeight: '700',
+          marginTop: 2,
+          letterSpacing: 0.3,
         },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'HUD',
-          tabBarIcon: ({ color }) => <TabBarIcon name="dashboard" color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="activity" size={20} color={color} />,
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
           title: 'Map',
-          tabBarIcon: ({ color }) => <TabBarIcon name="map" color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="map" size={20} color={color} />,
         }}
       />
-        <Tabs.Screen
-          name="history"
-          options={{
-            title: 'Logs',
-            tabBarIcon: ({ color, focused }) => (
-              <View className="items-center justify-center">
-                <Feather name="list" size={24} color={color} />
-                {focused && <View className="w-1 h-1 bg-[#0A84FF] rounded-full mt-1 absolute -bottom-3" />}
-              </View>
-            ),
-          }}
-        />
-
-        <Tabs.Screen
-          name="insights"
-          options={{
-            title: 'Insights',
-            tabBarIcon: ({ color, focused }) => (
-              <View className="items-center justify-center">
-                <Feather name="pie-chart" size={24} color={color} />
-                {focused && <View className="w-1 h-1 bg-[#0A84FF] rounded-full mt-1 absolute -bottom-3" />}
-              </View>
-            ),
-          }}
-        />
-
-        <Tabs.Screen
-          name="profile"
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'Logs',
+          tabBarIcon: ({ color }) => <Feather name="list" size={20} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="insights"
+        options={{
+          title: 'Insights',
+          tabBarIcon: ({ color }) => <Feather name="trending-up" size={20} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="garage"
+        options={{
+          title: 'Garage',
+          tabBarIcon: ({ color }) => <Feather name="truck" size={20} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="user" size={20} color={color} />,
         }}
       />
     </Tabs>

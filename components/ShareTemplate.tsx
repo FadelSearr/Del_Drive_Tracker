@@ -1,6 +1,6 @@
 import { Text, View, Image } from '@/components/tw';
 import React from 'react';
-import LeafletMap from '@/components/LeafletMap';
+import Svg, { Polyline, Circle } from 'react-native-svg';
 import { DriveData } from '@/services/Database';
 
 interface ShareTemplateProps {
@@ -8,10 +8,47 @@ interface ShareTemplateProps {
   backgroundImageUri?: string;
 }
 
+// Helper to normalize coordinates to SVG viewbox
+const getNormalizedPoints = (coords: {latitude: number, longitude: number}[], width: number, height: number, padding: number = 20) => {
+  if (!coords || coords.length === 0) return { pointsStr: '', endPoint: null };
+  let minLat = coords[0].latitude, maxLat = coords[0].latitude;
+  let minLon = coords[0].longitude, maxLon = coords[0].longitude;
+
+  coords.forEach(c => {
+    if (c.latitude < minLat) minLat = c.latitude;
+    if (c.latitude > maxLat) maxLat = c.latitude;
+    if (c.longitude < minLon) minLon = c.longitude;
+    if (c.longitude > maxLon) maxLon = c.longitude;
+  });
+
+  const latDiff = maxLat - minLat;
+  const lonDiff = maxLon - minLon;
+  const scaleX = (width - padding * 2) / (lonDiff || 1);
+  const scaleY = (height - padding * 2) / (latDiff || 1);
+  const scale = Math.min(scaleX, scaleY); // Maintain aspect ratio
+
+  const points = coords.map(c => {
+    const x = padding + (c.longitude - minLon) * scale;
+    const y = height - padding - (c.latitude - minLat) * scale; // Invert Y
+    return `${x},${y}`;
+  });
+  
+  const endP = coords.length > 0 ? { 
+    x: padding + (coords[coords.length-1].longitude - minLon) * scale, 
+    y: height - padding - (coords[coords.length-1].latitude - minLat) * scale 
+  } : null;
+
+  return { pointsStr: points.join(' '), endPoint: endP };
+};
+
 export default function ShareTemplate({ data, backgroundImageUri }: ShareTemplateProps) {
   // Typical IG Story dimensions ratio is 9:16
   const width = 1080 / 3;
   const height = 1920 / 3;
+  
+  const svgWidth = width * 0.85;
+  const svgHeight = svgWidth;
+  const { pointsStr, endPoint } = getNormalizedPoints(data.coordinates || [], svgWidth, svgHeight);
 
   return (
     <View style={[{ width, height }]} className="bg-[#0F0F0F] items-center relative overflow-hidden">
@@ -48,12 +85,24 @@ export default function ShareTemplate({ data, backgroundImageUri }: ShareTemplat
 
       {/* Main Track Record (Polyline Only) */}
       <View className="flex-1 w-full justify-center items-center">
-        <View className="w-[85%] aspect-square">
-          <LeafletMap 
-            interactive={false}
-            coordinates={data.coordinates || []}
-            mapMode="follow"
-          />
+        <View className="w-[85%] aspect-square items-center justify-center">
+          {pointsStr ? (
+            <Svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+              <Polyline
+                points={pointsStr}
+                fill="none"
+                stroke="#3B82F6"
+                strokeWidth="4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {endPoint && (
+                <Circle cx={endPoint.x} cy={endPoint.y} r="6" fill="white" />
+              )}
+            </Svg>
+          ) : (
+            <Text style={{color: 'rgba(255,255,255,0.3)'}}>No GPS Data</Text>
+          )}
         </View>
       </View>
 

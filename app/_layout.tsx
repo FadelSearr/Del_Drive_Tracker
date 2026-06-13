@@ -6,6 +6,14 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
+// Conditionally register widget so Expo Go doesn't crash
+try {
+  const { registerWidgetTaskHandler } = require('react-native-android-widget');
+  const { widgetTaskHandler } = require('../widget-task-handler');
+  registerWidgetTaskHandler(widgetTaskHandler);
+} catch (e) {
+  console.log("Skipping Android Widget registration (likely running in Expo Go)");
+}
 
 export {
   // Catch any errors thrown by the Layout component.

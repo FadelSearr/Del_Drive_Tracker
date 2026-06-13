@@ -33,10 +33,21 @@ export interface VehicleData {
   topSpeed: number;
   eloRating: number;
   isCurrent?: number; // 0 or 1
+  driveCount?: number;
+}
+
+export interface SegmentData {
+  id: string;
+  name: string;
+  startCoords: { latitude: number; longitude: number };
+  endCoords: { latitude: number; longitude: number };
+  bestTime: number; // in seconds
+  topSpeed: number; // in km/h
 }
 
 const DRIVES_FILE = `${FileSystem.documentDirectory}delroad_drives.json`;
 const VEHICLES_FILE = `${FileSystem.documentDirectory}delroad_vehicles.json`;
+const SEGMENTS_FILE = `${FileSystem.documentDirectory}delroad_segments.json`;
 
 const readDrives = async (): Promise<DriveData[]> => {
   try {
@@ -63,26 +74,7 @@ const readVehicles = async (): Promise<VehicleData[]> => {
     const info = await FileSystem.getInfoAsync(VEHICLES_FILE);
     if (!info.exists) {
       // Seed default vehicles
-      const defaults: VehicleData[] = [
-        {
-          id: 1,
-          name: 'Porsche 911 GT3 RS',
-          category: 'Daily Driver • 2024',
-          totalDistance: 1240,
-          topSpeed: 295,
-          eloRating: 1850,
-          isCurrent: 1
-        },
-        {
-          id: 2,
-          name: 'Toyota Tacoma',
-          category: 'Off-road • 2018',
-          totalDistance: 45000,
-          topSpeed: 140,
-          eloRating: 1200,
-          isCurrent: 0
-        }
-      ];
+      const defaults: VehicleData[] = [];
       await writeVehicles(defaults);
       return defaults;
     }
@@ -154,6 +146,12 @@ export const Database = {
     return newState;
   },
 
+  deleteDrive: async (id: number): Promise<void> => {
+    const drives = await readDrives();
+    const updated = drives.filter(d => d.id !== id);
+    await writeDrives(updated);
+  },
+
   // Vehicle Management
   getAllVehicles: async (): Promise<VehicleData[]> => {
     return await readVehicles();
@@ -188,5 +186,43 @@ export const Database = {
   getCurrentVehicle: async (): Promise<VehicleData | null> => {
     const vehicles = await readVehicles();
     return vehicles.find(v => v.isCurrent === 1) || null;
+  },
+  
+  // --- Segments ---
+  getAllSegments: async (): Promise<SegmentData[]> => {
+    try {
+      const info = await FileSystem.getInfoAsync(SEGMENTS_FILE);
+      if (!info.exists) return [];
+      const content = await FileSystem.readAsStringAsync(SEGMENTS_FILE);
+      return JSON.parse(content);
+    } catch (e) {
+      console.error('Failed to read segments file', e);
+      return [];
+    }
+  },
+
+  saveSegment: async (segment: SegmentData) => {
+    const segments = await Database.getAllSegments();
+    const existingIndex = segments.findIndex(s => s.id === segment.id);
+    if (existingIndex >= 0) {
+      segments[existingIndex] = segment;
+    } else {
+      segments.push(segment);
+    }
+    try {
+      await FileSystem.writeAsStringAsync(SEGMENTS_FILE, JSON.stringify(segments));
+    } catch (e) {
+      console.error('Failed to write segments file', e);
+    }
+  },
+
+  deleteSegment: async (id: string) => {
+    const segments = await Database.getAllSegments();
+    const updated = segments.filter(s => s.id !== id);
+    try {
+      await FileSystem.writeAsStringAsync(SEGMENTS_FILE, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to delete segment', e);
+    }
   }
 };
