@@ -3,3 +3,6 @@ node_modules
 dist
 temp.bundle
 temp.assets
+
+/android
+/ios
