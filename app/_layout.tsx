@@ -3,17 +3,13 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import 'react-native-reanimated';
+import '@/services/LocationService'; // Register background tasks
 
 import { useColorScheme } from '@/components/useColorScheme';
-// Conditionally register widget so Expo Go doesn't crash
-try {
-  const { registerWidgetTaskHandler } = require('react-native-android-widget');
-  const { widgetTaskHandler } = require('../widget-task-handler');
-  registerWidgetTaskHandler(widgetTaskHandler);
-} catch (e) {
-  console.log("Skipping Android Widget registration (likely running in Expo Go)");
-}
+import { supabase } from '@/services/Supabase';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -53,11 +49,32 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const [session, setSession] = useState<Session | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
+      setSession(session);
+      if (!session) {
+        router.replace('/login');
+      }
+    });
+
+    supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
+      setSession(session);
+      if (!session) {
+        router.replace('/login');
+      }
+    });
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
+        <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="drive" options={{ headerShown: false }} />
+        <Stack.Screen name="segments" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>

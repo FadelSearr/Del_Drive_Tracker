@@ -8,7 +8,17 @@
     "scheme": "delroad",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ],
+        "NSCameraUsageDescription": "This app uses the camera to record dashcam videos during your drives.",
+        "NSMicrophoneUsageDescription": "This app uses the microphone to record audio with dashcam videos.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save and view recorded videos.",
+        "NSPhotoLibraryAddUsageDescription": "This app needs permission to save recorded videos to your photo library."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +33,20 @@
         "googleMaps": {
           "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
         }
-      }
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -53,18 +76,19 @@
         }
       ],
       [
-        "react-native-android-widget",
+        "expo-camera",
         {
-          "widgets": [
-            {
-              "name": "DriveTrackerWidget",
-              "label": "Drive Tracker",
-              "minWidth": "140dp",
-              "minHeight": "110dp",
-              "description": "Drive Tracker Stats",
-              "previewImage": "./assets/images/icon.png"
-            }
-          ]
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to record dashcam videos.",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone to record audio with videos.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to save recorded videos.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save videos to your photo library.",
+          "isAccessMediaLocationEnabled": true
         }
       ]
     ],
@@ -74,8 +98,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2086dcfd-4401-43e8-a29d-d3503a7b3734"
+        "projectId": "6e6860b1-551a-460a-a9a8-4849e19a5569"
       }
-    }
+    },
+    "owner": "fadelis"
   }
 }

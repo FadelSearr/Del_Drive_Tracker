@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { StyleSheet, View, Text, Pressable, Alert } from 'react-native';
 import LeafletMap from '@/components/LeafletMap';
 import * as Location from 'expo-location';
 import { Accelerometer } from 'expo-sensors';
 import { router } from 'expo-router';
-import { Database } from '@/services/Database';
+import { Database, SegmentAttempt } from '@/services/Database';
 import { GamificationEngine } from '@/services/GamificationEngine';
 import { Feather } from '@expo/vector-icons';
+import DashcamView from '@/components/DashcamView';
 
 const LOCATION_TASK_NAME = 'background-location-task';
 
@@ -57,6 +58,11 @@ export default function MapTabScreen() {
   const [activeZone, setActiveZone] = useState<{ id: string; startTime: number } | null>(null);
   const activeZoneRef = React.useRef<{ id: string; startTime: number } | null>(null);
   const [hudMessage, setHudMessage] = useState<{ title: string; subtitle: string; type: 'trap' | 'zone_start' | 'zone_end' } | null>(null);
+  
+  // Dashcam State
+  const [isDashcamActive, setIsDashcamActive] = useState(false);
+  const [dashcamUri, setDashcamUri] = useState<string | null>(null);
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
 
   const updateActiveZoneState = (zone: { id: string; startTime: number } | null) => {
     activeZoneRef.current = zone;
@@ -148,35 +154,67 @@ export default function MapTabScreen() {
     return () => { if (interval) clearInterval(interval); };
   }, [isTracking, hasStarted]);
 
-  // Accelerometer Telematics
+  // Accelerometer Telematics (Smoothed & Speed-Gated)
   useEffect(() => {
     let subscription: any = null;
     if (isTracking && hasStarted) {
       Accelerometer.setUpdateInterval(100);
       let lastBrakeTime = 0;
       let lastLaneChangeTime = 0;
+      
+      let gravityX = 0, gravityY = 0, gravityZ = 0;
+      let lastGpsSpeed = 0;
+      const alpha = 0.8;
 
       subscription = Accelerometer.addListener(data => {
-        const accY = data.y * 9.81;
-        const accX = data.x * 9.81;
-        if (accY > 0.1) setMaxAcc(prev => Math.max(prev, accY));
-        if (accY < -0.1) {
-          const decVal = Math.abs(accY);
-          setMaxDec(prev => Math.max(prev, decVal));
+        gravityX = alpha * gravityX + (1 - alpha) * data.x;
+        gravityY = alpha * gravityY + (1 - alpha) * data.y;
+        gravityZ = alpha * gravityZ + (1 - alpha) * data.z;
+        
+        const currentSpeedMs = locationRef.current?.coords?.speed || 0;
+        const speedDelta = currentSpeedMs - lastGpsSpeed;
+        
+        // Run at 10Hz, but update lastGpsSpeed slowly to see trend
+        if (Math.random() < 0.1) lastGpsSpeed = currentSpeedMs; 
+        
+        if (currentSpeedMs < 1.5) return; // Ignored if < 5 km/h
+        
+        const gMag = Math.sqrt(gravityX*gravityX + gravityY*gravityY + gravityZ*gravityZ) || 1;
+        const gx = gravityX / gMag, gy = gravityY / gMag, gz = gravityZ / gMag;
+        
+        const linX = data.x - gravityX, linY = data.y - gravityY, linZ = data.z - gravityZ;
+        const vertAcc = linX * gx + linY * gy + linZ * gz;
+        
+        const horizX = linX - vertAcc * gx;
+        const horizY = linY - vertAcc * gy;
+        const horizZ = linZ - vertAcc * gz;
+        const horizMag = Math.sqrt(horizX*horizX + horizY*horizY + horizZ*horizZ) * 9.81;
+
+        if (speedDelta > 0.2 && horizMag > 0.5) {
+          setMaxAcc(prev => Math.max(prev, horizMag));
+        } else if (speedDelta < -0.2 && horizMag > 0.5) {
+          setMaxDec(prev => Math.max(prev, horizMag));
           const now = Date.now();
-          if (decVal > 2.0 && now - lastBrakeTime > 2000) {
+          if (horizMag > 2.5 && now - lastBrakeTime > 2000) {
             setBrakePressedCount(prev => prev + 1);
             lastBrakeTime = now;
           }
         }
-        const now = Date.now();
-        if (Math.abs(accX) > 1.8 && now - lastLaneChangeTime > 3000) {
-          setLaneChangesCount(prev => prev + 1);
-          lastLaneChangeTime = now;
+        
+        // Cornering / Lane Change proxy (if speed is stable but horizMag is high)
+        if (Math.abs(speedDelta) < 0.2 && horizMag > 2.0) {
+          const now = Date.now();
+          if (now - lastLaneChangeTime > 3000) {
+            setLaneChangesCount(prev => prev + 1);
+            lastLaneChangeTime = now;
+          }
         }
       });
     }
-    return () => { if (subscription) subscription.remove(); };
+    return () => {
+      if (subscription) subscription.remove();
+      Location.stopLocationUpdatesAsync('BACKGROUND_LOCATION_TASK').catch(() => {});
+    };
   }, [isTracking, hasStarted]);
 
   // GPS Location Tracking
@@ -198,11 +236,25 @@ export default function MapTabScreen() {
         console.warn("Background location permission denied");
       }
 
+      if (bgStatus === 'granted') {
+        await Location.startLocationUpdatesAsync('BACKGROUND_LOCATION_TASK', {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 1000,
+          distanceInterval: 2,
+          showsBackgroundLocationIndicator: true,
+          foregroundService: {
+            notificationTitle: 'Del Road',
+            notificationBody: 'Recording your drive...',
+            notificationColor: '#3B82F6',
+          },
+        }).catch(e => console.log('Failed to start bg location', e));
+      }
+
       let loc = await Location.getCurrentPositionAsync({});
       setLocation(loc);
 
       locationSubscription = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: 2000, distanceInterval: 5 },
+        { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 2 },
         (newLocation) => {
           const prevLoc = locationRef.current;
           setLocation(newLocation);
@@ -211,20 +263,26 @@ export default function MapTabScreen() {
             const currentSpeedKmh = Math.max(0, Math.round((newLocation.coords.speed || 0) * 3.6));
             setTopSpeed(prev => Math.max(prev, currentSpeedKmh));
             if (prevLoc && prevLoc.coords.heading !== null && newLocation.coords.heading !== null) {
-              const headingDiff = newLocation.coords.heading - prevLoc.coords.heading;
-              const normalizedDiff = ((headingDiff + 180) % 360) - 180;
-              if (Math.abs(normalizedDiff) > 45) {
-                if (normalizedDiff > 0) setRightTurnsCount(prev => prev + 1);
-                else setLeftTurnsCount(prev => prev + 1);
+              const currentSpeedMs = newLocation.coords.speed || 0;
+              // Only register turns if vehicle is moving > 15 km/h to prevent GPS drift rotation while stopped
+              if (currentSpeedMs > 4.1) {
+                const headingDiff = newLocation.coords.heading - prevLoc.coords.heading;
+                const normalizedDiff = ((headingDiff + 180) % 360) - 180;
+                if (Math.abs(normalizedDiff) > 45 && Math.abs(normalizedDiff) < 135) {
+                  if (normalizedDiff > 0) setRightTurnsCount(prev => prev + 1);
+                  else setLeftTurnsCount(prev => prev + 1);
+                }
               }
             }
             setRouteCoordinates(prev => {
-              if (prev.length > 0) {
+              const currentSpeedMs = newLocation.coords.speed || 0;
+              // Anti-GPS Drift: Only accumulate distance if actually moving (> ~5 km/h)
+              if (prev.length > 0 && currentSpeedMs > 1.4) {
                 const lastCoord = prev[prev.length - 1];
                 const newDist = getDistance(lastCoord.latitude, lastCoord.longitude, newLocation.coords.latitude, newLocation.coords.longitude);
                 if (newDist > 0.005) setDistance(d => d + newDist);
               }
-              const speedVal = Math.max(0, Math.round((newLocation.coords.speed || 0) * 3.6));
+              const speedVal = Math.max(0, Math.round(currentSpeedMs * 3.6));
               return [...prev, { latitude: newLocation.coords.latitude, longitude: newLocation.coords.longitude, speed: speedVal }];
             });
             // Speed Trap & Zone checks
@@ -248,20 +306,41 @@ export default function MapTabScreen() {
                 const currentSegment = allSegments.find(s => s.id === activeZoneRef.current?.id);
                 if (currentSegment) {
                    const distToEnd = getDistance(newLocation.coords.latitude, newLocation.coords.longitude, currentSegment.endCoords.latitude, currentSegment.endCoords.longitude);
-                   if (distToEnd < 0.05) { // within 50 meters
-                     const timeTaken = Math.round((Date.now() - activeZoneRef.current.startTime) / 1000);
-                     const isNewRecord = currentSegment.bestTime === 0 || timeTaken < currentSegment.bestTime;
-                     
-                     if (isNewRecord) {
-                       currentSegment.bestTime = timeTaken;
-                       // We should ideally update top speed in segment too, but keeping it simple for now
-                       await Database.saveSegment(currentSegment);
-                     }
-                     
-                     updateActiveZoneState(null);
-                     setHudMessage({ title: 'SEGMENT COMPLETED!', subtitle: `${currentSegment.name}: ${timeTaken}s ${isNewRecord ? '(NEW RECORD!)' : ''}`, type: 'zone_end' });
-                     setTimeout(() => setHudMessage(null), 5000);
-                   }
+                    if (distToEnd < 0.05) { // within 50 meters
+                      const timeTaken = Math.round((Date.now() - activeZoneRef.current.startTime) / 1000);
+                      
+                      // Calculate avg speed for the current attempt based on routeCoords since zone start
+                      // Find the index when we started the zone or just use the current top speed for simplicity if tracking isn't point-to-point enough
+                      const attemptTopSpeed = topSpeed; 
+                      const attemptAvgSpeed = Math.round((distance / (seconds || 1)) * 3600) || 0; // Rough estimate or use better logic if needed
+
+                      const newAttempt: SegmentAttempt = {
+                        id: Date.now().toString(),
+                        date: new Date().toISOString(),
+                        time: timeTaken,
+                        topSpeed: attemptTopSpeed,
+                        avgSpeed: attemptAvgSpeed,
+                        // driveId could be added if we had a current drive ID
+                      };
+
+                      const isNewRecord = (currentSegment.bestTime || 0) === 0 || timeTaken < currentSegment.bestTime;
+                      
+                      if (!currentSegment.attempts) currentSegment.attempts = [];
+                      currentSegment.attempts.push(newAttempt);
+
+                      if (isNewRecord) {
+                        currentSegment.bestTime = timeTaken;
+                        if (attemptTopSpeed > (currentSegment.topSpeed || 0)) {
+                          currentSegment.topSpeed = attemptTopSpeed;
+                        }
+                      }
+                      
+                      await Database.saveSegment(currentSegment);
+                      
+                      updateActiveZoneState(null);
+                      setHudMessage({ title: 'SEGMENT COMPLETED!', subtitle: `${currentSegment.title}: ${timeTaken}s ${isNewRecord ? '(NEW RECORD!)' : ''}`, type: 'zone_end' });
+                      setTimeout(() => setHudMessage(null), 5000);
+                    }
                 }
               }
 
@@ -300,7 +379,7 @@ export default function MapTabScreen() {
     try {
       const activeVehicle = await Database.getCurrentVehicle();
       if (!activeVehicle) {
-        alert("Please add and select a vehicle in Garage first");
+        Alert.alert("No Vehicle", "Please add and select a vehicle in Garage first");
         return;
       }
       setIsTracking(true);
@@ -319,6 +398,10 @@ export default function MapTabScreen() {
           }
         });
       }
+
+      if (isDashcamActive) {
+        setIsRecordingVideo(true);
+      }
     } catch (e) {
       console.log(e);
     }
@@ -336,6 +419,12 @@ export default function MapTabScreen() {
   };
 
   const handleEndDrive = async () => {
+    if (isRecordingVideo) {
+      setIsRecordingVideo(false);
+      // We'll wait a bit for the URI to be set via onRecordingComplete if needed, 
+      // but usually, we can just end and the URI will be updated in state.
+    }
+    
     const finalDuration = formatTime(seconds);
     const finalDistance = `${distance.toFixed(1)} km`;
     const finalTopSpeed = `${topSpeed} km/h`;
@@ -360,6 +449,7 @@ export default function MapTabScreen() {
       laneChanges: laneChangesCount, topBrakeForce: finalTopBrakeForce,
       leftTurns: leftTurnsCount, rightTurns: rightTurnsCount,
       stopsCount: stopsCount, stopsDuration: formatStopsDuration(stopsDurationSecs),
+      dashcamUri: dashcamUri || undefined,
     });
 
     const newlyAchieved = await GamificationEngine.evaluateDrive(newDrive);
@@ -387,19 +477,39 @@ export default function MapTabScreen() {
 
   return (
     <View style={styles.container}>
-      {location ? (
-        <LeafletMap 
-          userLocation={{ latitude: location.coords.latitude, longitude: location.coords.longitude }}
-          coordinates={routeCoordinates}
-          mapMode={mapMode}
-          showHeatmap={showHeatmap}
-          heatmapData={heatmapCoords}
-        />
-      ) : (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#09090F' }}>
-          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>Locating...</Text>
-        </View>
-      )}
+        {location ? (
+          isDashcamActive ? (
+            <DashcamView 
+              isRecording={isRecordingVideo}
+              speed={currentSpeed}
+              gForce={maxDec > maxAcc ? maxDec / 9.81 : maxAcc / 9.81}
+              onRecordingComplete={(uri) => setDashcamUri(uri)}
+            />
+          ) : (
+            <LeafletMap 
+              userLocation={{ latitude: location.coords.latitude, longitude: location.coords.longitude }}
+              coordinates={routeCoordinates}
+              mapMode={mapMode}
+              showHeatmap={showHeatmap}
+              heatmapData={heatmapCoords}
+            />
+          )
+        ) : (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#09090F' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>Locating...</Text>
+          </View>
+        )}
+
+      {/* Dashcam Toggle Button */}
+      <Pressable 
+        style={[styles.dashcamToggle, isDashcamActive && styles.dashcamToggleActive]}
+        onPress={() => {
+          if (isTracking) return; // Prevent toggle during recording for stability
+          setIsDashcamActive(!isDashcamActive);
+        }}
+      >
+        <Feather name="video" size={20} color={isDashcamActive ? "white" : "rgba(255,255,255,0.6)"} />
+      </Pressable>
       
       {/* Top HUD — Speed + Status */}
       <View style={styles.topHud}>
@@ -516,7 +626,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 16,
     borderRadius: 24,
-    backgroundColor: 'rgba(9,9,15,0.85)',
+    backgroundColor: 'rgba(9,9,15,0.8)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -527,7 +637,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: 'rgba(9,9,15,0.85)',
+    backgroundColor: 'rgba(9,9,15,0.8)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -544,21 +654,20 @@ const styles = StyleSheet.create({
   },
   bottomPanel: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: 90,
+    left: 16,
+    right: 16,
     paddingHorizontal: 16,
     paddingTop: 20,
-    paddingBottom: 28,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    backgroundColor: '#09090F',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
+    paddingBottom: 20,
+    borderRadius: 24,
+    backgroundColor: 'rgba(9,9,15,0.8)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#111120',
+    backgroundColor: 'rgba(17,17,32,0.8)',
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 8,
@@ -570,7 +679,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: '#111120',
+    backgroundColor: 'rgba(17,17,32,0.8)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
   },
@@ -637,5 +746,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(34,197,94,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(34,197,94,0.15)',
+  },
+  dashcamToggle: {
+    position: 'absolute',
+    top: 60,
+    left: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(9,9,15,0.8)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dashcamToggleActive: {
+    backgroundColor: '#4B7EFF',
+    borderColor: '#4B7EFF',
   },
 });

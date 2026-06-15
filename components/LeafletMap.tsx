@@ -15,6 +15,8 @@ interface LeafletMapProps {
   mapMode?: 'follow' | 'free' | '3d';
   showHeatmap?: boolean;
   heatmapData?: Coordinate[];
+  autoFitBounds?: boolean;
+  extraLayers?: { coordinates: Coordinate[]; color: string }[];
 }
 
 export default function LeafletMap({
@@ -24,6 +26,8 @@ export default function LeafletMap({
   mapMode = 'follow',
   showHeatmap = false,
   heatmapData = [],
+  autoFitBounds = false,
+  extraLayers = [],
 }: LeafletMapProps) {
   const webViewRef = useRef<WebView>(null);
 
@@ -75,8 +79,9 @@ export default function LeafletMap({
           var heatLayer = null;
           var currentMode = 'follow';
           var hasSetInitialView = false;
+          var extraPolylines = [];
 
-          function updateMap(routeCoords, userLoc, mode, showHeat, heatCoords) {
+          function updateMap(routeCoords, userLoc, mode, showHeat, heatCoords, autoFit, extraLyrs) {
             currentMode = mode;
             var mapContainer = document.getElementById('map');
             
@@ -89,6 +94,8 @@ export default function LeafletMap({
             if (routePolyline) { map.removeLayer(routePolyline); }
             if (startMarker) { map.removeLayer(startMarker); }
             if (endMarker) { map.removeLayer(endMarker); }
+            extraPolylines.forEach(function(l) { map.removeLayer(l); });
+            extraPolylines = [];
 
             if (routeCoords && routeCoords.length > 1) {
               routePolyline = L.layerGroup().addTo(map);
@@ -134,10 +141,14 @@ export default function LeafletMap({
               startMarker = L.marker([routeCoords[0][0], routeCoords[0][1]], {icon: startIcon}).addTo(map);
               endMarker = L.marker([routeCoords[routeCoords.length-1][0], routeCoords[routeCoords.length-1][1]], {icon: endIcon}).addTo(map);
 
-              if (!hasSetInitialView && mode !== 'follow') {
+              if (!hasSetInitialView || autoFit) {
                 var bounds = L.latLngBounds(routeCoords.map(function(c) { return [c[0], c[1]]; }));
-                map.fitBounds(bounds, { padding: [30, 30] });
-                hasSetInitialView = true;
+                if (userLoc) bounds.extend(userLoc); // Include user location in bounds
+                
+                if (bounds.isValid()) {
+                  map.fitBounds(bounds, { padding: [40, 40], maxZoom: 18 });
+                  hasSetInitialView = true;
+                }
               }
             }
 
@@ -150,13 +161,43 @@ export default function LeafletMap({
                }).addTo(map);
             }
 
+            if (extraLyrs && extraLyrs.length > 0) {
+               extraLyrs.forEach(function(layer) {
+                 if (layer.coordinates && layer.coordinates.length > 1) {
+                   var poly = L.polyline(layer.coordinates.map(function(c) { return [c.latitude, c.longitude]; }), {
+                     color: layer.color || '#F97316',
+                     weight: 5,
+                     opacity: 0.8,
+                     dashArray: '10, 10'
+                   }).addTo(map);
+                   
+                   if (layer.name) {
+                      var midIndex = Math.floor(layer.coordinates.length / 2);
+                      var midCoord = layer.coordinates[midIndex];
+                      var labelIcon = L.divIcon({
+                        className: 'segment-label',
+                        html: '<div style="background: rgba(249, 115, 22, 0.95); color: white; padding: 4px 8px; border-radius: 8px; font-size: 11px; font-weight: 700; white-space: nowrap; border: 2px solid #09090F; box-shadow: 0 4px 12px rgba(0,0,0,0.5); font-family: sans-serif;">🏁 ' + layer.name + '</div>',
+                        iconSize: [null, null],
+                        iconAnchor: [0, 0]
+                      });
+                      var labelMarker = L.marker([midCoord.latitude, midCoord.longitude], {icon: labelIcon}).addTo(map);
+                      extraPolylines.push(labelMarker);
+                      
+                      // bind popup just in case
+                      poly.bindPopup('<b>Segment:</b> ' + layer.name);
+                   }
+                   extraPolylines.push(poly);
+                 }
+               });
+             }
+
             if (userMarker) { map.removeLayer(userMarker); }
             if (userLoc && !showHeat) {
               userMarker = L.circleMarker(userLoc, {
                 radius: 8, fillColor: '#0A84FF', color: '#ffffff', weight: 3, opacity: 1, fillOpacity: 0.9
               }).addTo(map);
 
-              if (mode === 'follow' || mode === '3d') {
+              if ((mode === 'follow' || mode === '3d') && !autoFit) {
                 if (!hasSetInitialView) {
                   map.setView(userLoc, 16);
                   hasSetInitialView = true;
@@ -178,18 +219,20 @@ export default function LeafletMap({
       const userLocData = userLocation ? JSON.stringify([userLocation.latitude, userLocation.longitude]) : 'null';
       const heatDataString = showHeatmap ? JSON.stringify(heatmapData.map(c => [c.latitude, c.longitude])) : '[]';
 
-      webViewRef.current.injectJavaScript(`
-        if (typeof updateMap === 'function') {
-          updateMap(${polylineData}, ${userLocData}, '${mapMode}', ${showHeatmap}, ${heatDataString});
-        }
-        true;
-      `);
+      const extraLayersData = JSON.stringify(extraLayers);
+ 
+       webViewRef.current.injectJavaScript(`
+         if (typeof updateMap === 'function') {
+           updateMap(${polylineData}, ${userLocData}, '${mapMode}', ${showHeatmap}, ${heatDataString}, ${autoFitBounds}, ${extraLayersData});
+         }
+         true;
+       `);
     }
   };
 
   useEffect(() => {
     injectUpdate();
-  }, [coordinates, userLocation, mapMode, showHeatmap, heatmapData]);
+  }, [coordinates, userLocation, mapMode, showHeatmap, heatmapData, autoFitBounds, extraLayers]);
 
   return (
     <View style={styles.container}>

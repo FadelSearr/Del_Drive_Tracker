@@ -1,19 +1,28 @@
-import { Text, View, Image } from '@/components/tw';
-import React from 'react';
-import Svg, { Polyline, Circle } from 'react-native-svg';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import Svg, { Circle, Defs, Line, LinearGradient, Stop } from 'react-native-svg';
 import { DriveData } from '@/services/Database';
 
 interface ShareTemplateProps {
   data: DriveData;
   backgroundImageUri?: string;
+  videoUri?: string;
+  heatmapData?: { latitude: number; longitude: number; speed?: number }[];
+  animated?: boolean;
 }
 
-// Helper to normalize coordinates to SVG viewbox
-const getNormalizedPoints = (coords: {latitude: number, longitude: number}[], width: number, height: number, padding: number = 20) => {
-  if (!coords || coords.length === 0) return { pointsStr: '', endPoint: null };
+const getNormalizedPoints = (
+  coords: { latitude: number; longitude: number; speed?: number }[],
+  width: number,
+  height: number,
+  padding = 28
+) => {
+  if (!coords || coords.length === 0)
+    return { points: [], minLat: 0, minLon: 0, scale: 1 };
+
   let minLat = coords[0].latitude, maxLat = coords[0].latitude;
   let minLon = coords[0].longitude, maxLon = coords[0].longitude;
-
   coords.forEach(c => {
     if (c.latitude < minLat) minLat = c.latitude;
     if (c.latitude > maxLat) maxLat = c.latitude;
@@ -23,127 +32,311 @@ const getNormalizedPoints = (coords: {latitude: number, longitude: number}[], wi
 
   const latDiff = maxLat - minLat;
   const lonDiff = maxLon - minLon;
-  const scaleX = (width - padding * 2) / (lonDiff || 1);
-  const scaleY = (height - padding * 2) / (latDiff || 1);
-  const scale = Math.min(scaleX, scaleY); // Maintain aspect ratio
+  const scaleX = (width - padding * 2) / (lonDiff || 0.0001);
+  const scaleY = (height - padding * 2) / (latDiff || 0.0001);
+  const scale = Math.min(scaleX, scaleY);
 
-  const points = coords.map(c => {
-    const x = padding + (c.longitude - minLon) * scale;
-    const y = height - padding - (c.latitude - minLat) * scale; // Invert Y
-    return `${x},${y}`;
-  });
-  
-  const endP = coords.length > 0 ? { 
-    x: padding + (coords[coords.length-1].longitude - minLon) * scale, 
-    y: height - padding - (coords[coords.length-1].latitude - minLat) * scale 
-  } : null;
+  const offsetX = (width - padding * 2 - lonDiff * scale) / 2;
+  const offsetY = (height - padding * 2 - latDiff * scale) / 2;
 
-  return { pointsStr: points.join(' '), endPoint: endP };
+  const points = coords.map(c => ({
+    x: padding + offsetX + (c.longitude - minLon) * scale,
+    y: height - padding - offsetY - (c.latitude - minLat) * scale,
+    speed: c.speed || 0,
+  }));
+
+  return { points, minLat, minLon, scale };
 };
 
-export default function ShareTemplate({ data, backgroundImageUri }: ShareTemplateProps) {
-  // Typical IG Story dimensions ratio is 9:16
-  const width = 1080 / 3;
-  const height = 1920 / 3;
-  
-  const svgWidth = width * 0.85;
-  const svgHeight = svgWidth;
-  const { pointsStr, endPoint } = getNormalizedPoints(data.coordinates || [], svgWidth, svgHeight);
+// speed 0–1 → hsl color (blue → cyan → green → yellow → orange → red)
+const speedToColor = (t: number) => {
+  // clamp
+  const s = Math.max(0, Math.min(1, t));
+  // hue: 240 (blue) → 0 (red)
+  const hue = 240 - s * 240;
+  return `hsl(${Math.round(hue)},100%,55%)`;
+};
+
+export default function ShareTemplate({
+  data,
+  backgroundImageUri,
+  videoUri,
+  heatmapData = [],
+  animated: shouldAnimate = false,
+}: ShareTemplateProps) {
+  const width = 1080 / 3;   // 360
+  const height = 1920 / 3;  // 640
+
+  const svgWidth = width;
+  const svgHeight = height * 0.55;
+
+  const { points } = getNormalizedPoints(data.coordinates || [], svgWidth, svgHeight, 28);
+
+  const maxSpeed = points.reduce((m, p) => Math.max(m, p.speed), 0.01);
+
+  // Animated marker
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!shouldAnimate || points.length < 2) return;
+    progress.setValue(0);
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 5000,
+      easing: Easing.inOut(Easing.quad),
+      useNativeDriver: false,
+    }).start(() => {
+      // loop
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 0,
+        useNativeDriver: false,
+      }).start();
+    });
+  }, [shouldAnimate, points.length]);
+
+  // Interpolated marker position
+  const markerX = progress.interpolate({
+    inputRange: points.map((_, i) => i / Math.max(1, points.length - 1)),
+    outputRange: points.map(p => p.x),
+    extrapolate: 'clamp',
+  });
+  const markerY = progress.interpolate({
+    inputRange: points.map((_, i) => i / Math.max(1, points.length - 1)),
+    outputRange: points.map(p => p.y),
+    extrapolate: 'clamp',
+  });
+
+  const startPt = points[0];
+  const endPt = points[points.length - 1];
+
+  // Build color segments
+  const segments = points.slice(0, -1).map((p, i) => {
+    const next = points[i + 1];
+    const t = maxSpeed > 0 ? p.speed / maxSpeed : 0;
+    return { x1: p.x, y1: p.y, x2: next.x, y2: next.y, color: speedToColor(t) };
+  });
+
+  const player = useVideoPlayer(videoUri || '', (player) => {
+    player.loop = true;
+    player.muted = true;
+    player.play();
+  });
 
   return (
-    <View style={[{ width, height }]} className="bg-[#0F0F0F] items-center relative overflow-hidden">
-      
-      {/* Background Photo from Gallery */}
+    <View style={[s.container, { width, height }]}>
+      {/* Background */}
       {backgroundImageUri ? (
         <>
-          <Image 
-            source={{ uri: backgroundImageUri }} 
-            className="absolute inset-0 w-full h-full"
-            style={{ opacity: 0.7 }}
+          <Image source={{ uri: backgroundImageUri }} style={s.bgImage} />
+          <View style={s.bgOverlay} />
+        </>
+      ) : videoUri ? (
+        <>
+          <VideoView
+            player={player}
+            style={s.bgImage}
+            contentFit="cover"
+            nativeControls={false}
           />
-          {/* Vignette / Gradient overlay for premium feel */}
-          <View className="absolute inset-0 bg-black/40" />
+          <View style={s.bgOverlay} />
+          <View style={s.dashcamBadge}>
+             <Text style={s.dashcamBadgeText}>DASHCAM OVERLAY</Text>
+          </View>
         </>
       ) : (
-        <View className="absolute inset-0 bg-[#0F0F0F]">
-          {/* Abstract Grid Pattern for empty background */}
-          <View className="absolute inset-0 flex-row flex-wrap opacity-10">
-             {Array.from({ length: 48 }).map((_, i) => (
-               <View key={i} style={{ width: width / 4, height: width / 4 }} className={i % 2 === 0 ? 'bg-white' : 'bg-transparent'} />
-             ))}
+        <View style={s.bgSolid}>
+          <View style={s.bgGrid}>
+            {Array.from({ length: 48 }).map((_, i) => (
+              <View key={i} style={[s.gridCell, { width: width / 4, height: width / 4 },
+                i % 2 === 0 ? s.bgWhite : s.bgTransparent]} />
+            ))}
           </View>
         </View>
       )}
-      
-      {/* Top Header */}
-      <View className="mt-16 items-center">
-        <View className="px-6 py-2 border-y border-white/20">
-          <Text className="text-white font-black text-3xl tracking-[0.2em] italic">OPEN ROAD</Text>
+
+      {/* Radial glow center */}
+      <View style={s.centerGlow} />
+
+      {/* Header */}
+      <View style={s.header}>
+        <View style={s.logoRow}>
+          <View style={s.logoDot} />
+          <Text style={s.logoText}>DEL ROAD</Text>
         </View>
-        <Text className="text-white/50 text-[10px] font-bold tracking-widest uppercase mt-4">{data.date}</Text>
+        <Text style={s.date}>{data.date}</Text>
       </View>
 
-      {/* Main Track Record (Polyline Only) */}
-      <View className="flex-1 w-full justify-center items-center">
-        <View className="w-[85%] aspect-square items-center justify-center">
-          {pointsStr ? (
+      {/* Track SVG */}
+      <View style={[s.mapContainer, { width: svgWidth, height: svgHeight }]}>
+        {points.length > 1 ? (
+          <>
             <Svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
-              <Polyline
-                points={pointsStr}
-                fill="none"
-                stroke="#3B82F6"
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              {endPoint && (
-                <Circle cx={endPoint.x} cy={endPoint.y} r="6" fill="white" />
+              <Defs>
+                <LinearGradient id="glowGrad" x1="0" y1="0" x2="1" y2="0">
+                  <Stop offset="0" stopColor="#4B7EFF" stopOpacity="0.3" />
+                  <Stop offset="1" stopColor="#FF3B30" stopOpacity="0.3" />
+                </LinearGradient>
+              </Defs>
+
+              {/* Shadow/glow pass */}
+              {segments.map((seg, i) => (
+                <Line
+                  key={`glow-${i}`}
+                  x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+                  stroke={seg.color}
+                  strokeWidth={10}
+                  strokeLinecap="round"
+                  opacity={0.2}
+                />
+              ))}
+
+              {/* Main colored line */}
+              {segments.map((seg, i) => (
+                <Line
+                  key={`seg-${i}`}
+                  x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+                  stroke={seg.color}
+                  strokeWidth={3.5}
+                  strokeLinecap="round"
+                />
+              ))}
+
+              {/* Start dot */}
+              {startPt && (
+                <Circle cx={startPt.x} cy={startPt.y} r={6} fill="#30D158" stroke="white" strokeWidth={2} />
+              )}
+              {/* End dot */}
+              {endPt && (
+                <Circle cx={endPt.x} cy={endPt.y} r={6} fill="#FF3B30" stroke="white" strokeWidth={2} />
               )}
             </Svg>
-          ) : (
-            <Text style={{color: 'rgba(255,255,255,0.3)'}}>No GPS Data</Text>
-          )}
+
+            {/* Animated marker (car dot) */}
+            {shouldAnimate && (
+              <Animated.View
+                style={[
+                  s.markerDot,
+                  { transform: [{ translateX: markerX as any }, { translateY: markerY as any }] },
+                ]}
+              >
+                <View style={s.markerInner} />
+              </Animated.View>
+            )}
+          </>
+        ) : (
+          <Text style={{ color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 60 }}>
+            No GPS Data
+          </Text>
+        )}
+      </View>
+
+      {/* Speed legend */}
+      <View style={s.legend}>
+        <Text style={s.legendLabel}>SLOW</Text>
+        <View style={s.legendBar}>
+          {['#4B7EFF','#00D4AA','#30D158','#FFD60A','#FF9F0A','#FF3B30'].map((c, i) => (
+            <View key={i} style={[s.legendChip, { backgroundColor: c }]} />
+          ))}
+        </View>
+        <Text style={s.legendLabel}>FAST</Text>
+      </View>
+
+      {/* Stats Grid */}
+      <View style={s.statsContainer}>
+        <View style={s.statRow}>
+          {[
+            { label: 'DISTANCE', val: data.distance?.replace(/[^0-9.]/g, '') || '0', unit: 'km' },
+            { label: 'DURATION', val: data.duration || '0m', unit: '' },
+          ].map(st => (
+            <View key={st.label} style={s.statBox}>
+              <Text style={s.statLabel}>{st.label}</Text>
+              <View style={s.statValRow}>
+                <Text style={s.statVal}>{st.val}</Text>
+                {!!st.unit && <Text style={s.statUnit}>{st.unit}</Text>}
+              </View>
+            </View>
+          ))}
+        </View>
+        <View style={[s.statRow, { marginTop: 12 }]}>
+          {[
+            { label: 'TOP SPEED', val: data.topSpeed?.replace(/[^0-9.]/g, '') || '0', unit: 'km/h' },
+            { label: 'AVG SPEED', val: data.avgSpeed?.replace(/[^0-9.]/g, '') || '0', unit: 'km/h' },
+          ].map(st => (
+            <View key={st.label} style={s.statBox}>
+              <Text style={s.statLabel}>{st.label}</Text>
+              <View style={s.statValRow}>
+                <Text style={s.statVal}>{st.val}</Text>
+                <Text style={s.statUnit}>{st.unit}</Text>
+              </View>
+            </View>
+          ))}
         </View>
       </View>
 
-      {/* Stats Container - Grid Style */}
-      <View className="w-full px-6 pb-12">
-        <View className="bg-black/50 backdrop-blur-md rounded-[32px] p-6 border border-white/10">
-          
-          {/* Main Row: Distance & Time */}
-          <View className="flex-row justify-between mb-6 pb-6 border-b border-white/10">
-            <View>
-              <Text className="text-white/40 text-[9px] font-bold tracking-[0.2em] uppercase mb-1">Distance</Text>
-              <Text className="text-white font-black text-2xl italic">{data.distance}</Text>
-            </View>
-            <View className="items-end">
-              <Text className="text-white/40 text-[9px] font-bold tracking-[0.2em] uppercase mb-1">Time</Text>
-              <Text className="text-white font-black text-2xl italic">{data.duration}</Text>
-            </View>
-          </View>
-
-          {/* Secondary Row: Top & Avg Speed */}
-          <View className="flex-row justify-between">
-            <View>
-              <Text className="text-white/40 text-[9px] font-bold tracking-[0.2em] uppercase mb-1">Top Speed</Text>
-              <Text className="text-white font-black text-xl italic">{data.topSpeed}</Text>
-            </View>
-            <View className="items-end">
-              <Text className="text-white/40 text-[9px] font-bold tracking-[0.2em] uppercase mb-1">Avg Speed</Text>
-              <Text className="text-white font-black text-xl italic">{data.avgSpeed}</Text>
-            </View>
-          </View>
-
-        </View>
-
-        {/* Branding Footer */}
-        <View className="mt-6 flex-row items-center justify-center opacity-40">
-           <View className="h-[1px] flex-1 bg-white/50" />
-           <Text className="text-white text-[8px] font-bold tracking-[0.3em] mx-4 uppercase">Track Record</Text>
-           <View className="h-[1px] flex-1 bg-white/50" />
-        </View>
+      {/* Bottom brand watermark */}
+      <View style={s.watermark}>
+        <View style={s.watermarkDot} />
+        <Text style={s.watermarkText}>Del Road • Drive Tracker</Text>
       </View>
-
     </View>
   );
 }
+
+const s: any = StyleSheet.create({
+  container: { backgroundColor: '#0A0A12', alignItems: 'center', position: 'relative', overflow: 'hidden' },
+  bgImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', opacity: 0.55 },
+  bgOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.55)' },
+  bgSolid: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0A0A12' },
+  bgGrid: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row', flexWrap: 'wrap', opacity: 0.07 },
+  gridCell: {},
+  bgWhite: { backgroundColor: 'white' },
+  bgTransparent: { backgroundColor: 'transparent' },
+  centerGlow: {
+    position: 'absolute', width: 300, height: 300, borderRadius: 150,
+    backgroundColor: 'rgba(75,126,255,0.06)', top: '30%', left: '50%',
+    transform: [{ translateX: -150 }, { translateY: -150 }],
+  },
+  header: { position: 'absolute', top: 44, left: 0, right: 0, alignItems: 'center' },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  logoDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4B7EFF' },
+  logoText: { color: 'white', fontWeight: '900', fontSize: 22, letterSpacing: 6 },
+  date: { color: 'rgba(255,255,255,0.35)', fontSize: 9, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
+  mapContainer: { position: 'absolute', top: 90, left: 0 },
+  legend: { position: 'absolute', top: 98, right: 12, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  legendLabel: { color: 'rgba(255,255,255,0.3)', fontSize: 7, fontWeight: '700' },
+  legendBar: { flexDirection: 'row', borderRadius: 2, overflow: 'hidden' },
+  legendChip: { width: 10, height: 4 },
+  statsContainer: { position: 'absolute', bottom: 40, left: 24, right: 24 },
+  statRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  statBox: { alignItems: 'center', flex: 1 },
+  statLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 8, fontWeight: '700', letterSpacing: 2, marginBottom: 2 },
+  statValRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
+  statVal: { color: 'white', fontSize: 24, fontWeight: '900' },
+  statUnit: { color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '700' },
+  markerDot: {
+    position: 'absolute', width: 20, height: 20, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.25)', borderWidth: 2, borderColor: 'white',
+    alignItems: 'center', justifyContent: 'center',
+    marginLeft: -10, marginTop: -10,
+    shadowColor: 'white', shadowRadius: 8, shadowOpacity: 0.8,
+  },
+  markerInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'white' },
+  watermark: { position: 'absolute', bottom: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  watermarkDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#4B7EFF' },
+  watermarkText: { color: 'rgba(255,255,255,0.2)', fontSize: 8, fontWeight: '700', letterSpacing: 1.5 },
+  dashcamBadge: {
+    position: 'absolute',
+    top: 110,
+    left: 24,
+    backgroundColor: 'rgba(239,68,68,0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  dashcamBadgeText: {
+    color: 'white',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+});

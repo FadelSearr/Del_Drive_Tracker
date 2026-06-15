@@ -18,7 +18,8 @@ export default function TabLayout() {
         headerShown: false,
         tabBarStyle: {
           backgroundColor: '#0C0C18',
-          borderTopColor: 'rgba(255,255,255,0.06)',
+          position: 'absolute',
+          borderTopColor: 'rgba(255,255,255,0.08)',
           borderTopWidth: StyleSheet.hairlineWidth,
           elevation: 0,
           shadowOpacity: 0,
@@ -48,24 +49,17 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="dashcam"
+        options={{
+          title: 'Dashcam',
+          tabBarIcon: ({ color }) => <Feather name="video" size={20} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="history"
         options={{
-          title: 'Logs',
-          tabBarIcon: ({ color }) => <Feather name="list" size={20} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="insights"
-        options={{
-          title: 'Insights',
-          tabBarIcon: ({ color }) => <Feather name="trending-up" size={20} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="garage"
-        options={{
-          title: 'Garage',
-          tabBarIcon: ({ color }) => <Feather name="truck" size={20} color={color} />,
+          title: 'History',
+          tabBarIcon: ({ color }) => <Feather name="clock" size={20} color={color} />,
         }}
       />
       <Tabs.Screen

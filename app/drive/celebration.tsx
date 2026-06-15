@@ -1,151 +1,214 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, KeyboardAvoidingView, Image } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
-import { GamificationEngine, Milestone } from '@/services/GamificationEngine';
-import { Database } from '@/services/Database';
+import { Database, VehicleData, DriveData } from '@/services/Database';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function CelebrationScreen() {
-  const { driveId, newlyAchieved } = useLocalSearchParams();
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [streak, setStreak] = useState({ current: 0, best: 0 });
-  const [drive, setDrive] = useState<any>(null);
+const WEATHER_OPTIONS = [
+  { id: 'Sunny', icon: 'sun' },
+  { id: 'Cloudy', icon: 'cloud' },
+  { id: 'Rainy', icon: 'cloud-rain' },
+  { id: 'Night', icon: 'moon' }
+];
+
+const DRIVE_STYLES = [
+  { id: 'Normal', icon: 'coffee', color: '#3B82F6' },
+  { id: 'Focus', icon: 'crosshair', color: '#F97316' },
+  { id: 'Aggressive', icon: 'zap', color: '#EF4444' }
+];
+
+export default function SaveDriveScreen() {
+  const { driveId } = useLocalSearchParams();
+  const [title, setTitle] = useState('');
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [driveStyle, setDriveStyle] = useState('Normal');
+  const [weather, setWeather] = useState('Sunny');
+  const [privacy, setPrivacy] = useState('Public');
+  const [vehicles, setVehicles] = useState<VehicleData[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (newlyAchieved) {
-      try { setMilestones(JSON.parse(newlyAchieved as string)); } catch (e) {}
+    const init = async () => {
+      const v = await Database.getAllVehicles();
+      setVehicles(v);
+      const current = v.find(v => v.isCurrent === 1);
+      if (current) setSelectedVehicleId(current.id);
+    };
+    init();
+  }, []);
+
+  const handleSave = async () => {
+    if (!driveId) {
+      router.replace('/(tabs)');
+      return;
     }
-    GamificationEngine.getStreak().then(res => setStreak(res));
-    if (driveId) {
-      Database.getDriveById(parseInt(driveId as string, 10)).then(d => setDrive(d));
+    
+    const carName = vehicles.find(v => v.id === selectedVehicleId)?.name;
+    const detailsToUpdate: Partial<DriveData> = { 
+      title, 
+      driveStyle, 
+      weather, 
+      vehicleId: selectedVehicleId || undefined, 
+      privacy 
+    };
+    if (carName) {
+       detailsToUpdate.car = carName;
     }
-  }, [newlyAchieved, driveId]);
+    
+    await Database.updateDriveDetails(Number(driveId), detailsToUpdate);
+    
+    router.replace(`/drive/${driveId}`);
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#09090F' }}>
-      {/* Green glow */}
-      <View style={{ position: 'absolute', top: -60, left: '50%', marginLeft: -150, width: 300, height: 300, borderRadius: 150, backgroundColor: '#22C55E', opacity: 0.06 }} />
-
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 24 }}>
-        {/* Check icon */}
-        <View style={{ alignItems: 'center', marginBottom: 24 }}>
-          <View style={s.checkCircle}>
-            <Feather name="check-circle" size={52} color="#22C55E" />
-          </View>
-        </View>
-
-        {/* Title */}
-        <View style={{ alignItems: 'center', marginBottom: 24 }}>
-          <Text style={{ color: 'white', fontSize: 28, fontWeight: '700', lineHeight: 34 }}>Drive Complete!</Text>
-          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14, marginTop: 6 }}>Great drive — here's your summary</Text>
-        </View>
-
-        {/* Quick stats */}
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-          {[
-            { label: 'Distance', value: drive?.distance || '--' },
-            { label: 'Duration', value: drive?.duration || '--' },
-            { label: 'Top', value: drive?.topSpeed || '--' },
-            { label: 'Avg', value: drive?.avgSpeed || '--' },
-          ].map((st) => (
-            <View key={st.label} style={s.statCard}>
-              <Text style={{ fontSize: 15, color: 'white', fontWeight: '700' }}>{st.value}</Text>
-              <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{st.label}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Streak card */}
-        <View style={s.streakCard}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Text style={{ fontSize: 28 }}>🔥</Text>
-              <View>
-                <Text style={{ color: '#EAB308', fontSize: 14, fontWeight: '700' }}>Driving Streak</Text>
-                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Keep it up — drive tomorrow!</Text>
-              </View>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ color: '#EAB308', fontSize: 28, fontWeight: '800', lineHeight: 30 }}>{streak.current}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10 }}>days</Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(234,179,8,0.15)' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>Current: <Text style={{ color: '#EAB308', fontWeight: '700' }}>🔥 {streak.current}</Text></Text>
-            <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>Best: <Text style={{ color: 'white', fontWeight: '700' }}>⭐ {streak.best}</Text></Text>
-          </View>
-        </View>
-
-        {/* Milestones */}
-        {milestones.length > 0 && (
-          <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', letterSpacing: 0.6, marginBottom: 8 }}>MILESTONES UNLOCKED</Text>
-            <View style={{ gap: 8 }}>
-              {milestones.map(m => (
-                <View key={m.id} style={s.milestoneCard}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(75,126,255,0.15)', alignItems: 'center', justifyContent: 'center' }}>
-                    <Feather name={m.icon as any || "award"} size={18} color="#4B7EFF" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>{m.title}</Text>
-                    <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>{m.description}</Text>
-                  </View>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, backgroundColor: 'rgba(34,197,94,0.15)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.2)' }}>
-                    <Text style={{ color: '#22C55E', fontSize: 9, fontWeight: '700', letterSpacing: 0.5 }}>NEW</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* CTA Buttons */}
-        <View style={{ marginTop: 32, gap: 12 }}>
-          <Pressable style={s.primaryBtn} onPress={() => {
-            if (driveId) router.replace(`/drive/${driveId}`);
-            else router.replace('/(tabs)/history');
-          }}>
-            <Feather name="bar-chart-2" size={18} color="white" />
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>View Drive Summary</Text>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        {/* Header */}
+        <View style={s.header}>
+          <Pressable onPress={() => router.back()} style={s.iconBtn}>
+            <Feather name="x" size={24} color="white" />
           </Pressable>
-          <Pressable style={s.ghostBtn} onPress={() => router.replace('/(tabs)/map')}>
-            <Feather name="map" size={16} color="rgba(255,255,255,0.7)" />
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: '600' }}>Back to Map</Text>
+          <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>Save Drive</Text>
+          <Pressable onPress={handleSave} style={s.saveBtn}>
+            <Text style={{ color: 'black', fontSize: 14, fontWeight: '700' }}>Save</Text>
           </Pressable>
         </View>
-      </ScrollView>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 24 }}>
+          
+          {/* Title Input */}
+          <View>
+            <Text style={s.label}>Title</Text>
+            <TextInput
+              style={s.input}
+              placeholder="e.g., Morning Commute, Weekend Touge"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={title}
+              onChangeText={setTitle}
+            />
+          </View>
+
+          {/* Add Photos */}
+          <View>
+             <Text style={s.label}>Photos</Text>
+             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+                <Pressable style={s.addPhotoBtn}>
+                   <Feather name="camera" size={24} color="rgba(255,255,255,0.4)" />
+                   <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 4, fontWeight: '600' }}>Add Photo</Text>
+                </Pressable>
+             </ScrollView>
+          </View>
+
+          {/* Drive Style */}
+          <View>
+            <Text style={s.label}>Drive Style</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              {DRIVE_STYLES.map(style => {
+                const isActive = driveStyle === style.id;
+                return (
+                  <Pressable 
+                    key={style.id} 
+                    onPress={() => setDriveStyle(style.id)}
+                    style={[s.optionChip, isActive && { borderColor: style.color, backgroundColor: `${style.color}20` }]}
+                  >
+                    <Feather name={style.icon as any} size={16} color={isActive ? style.color : 'rgba(255,255,255,0.4)'} />
+                    <Text style={{ color: isActive ? style.color : 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>{style.id}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Weather */}
+          <View>
+            <Text style={s.label}>Weather</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              {WEATHER_OPTIONS.map(w => {
+                const isActive = weather === w.id;
+                return (
+                  <Pressable 
+                    key={w.id} 
+                    onPress={() => setWeather(w.id)}
+                    style={[s.iconOption, isActive && { backgroundColor: '#4B7EFF', borderColor: '#4B7EFF' }]}
+                  >
+                    <Feather name={w.icon as any} size={20} color={isActive ? 'white' : 'rgba(255,255,255,0.4)'} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Vehicle Selection */}
+          <View>
+            <Text style={s.label}>Vehicle</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+              {vehicles.map(v => {
+                const isActive = selectedVehicleId === v.id;
+                return (
+                  <Pressable 
+                    key={v.id} 
+                    onPress={() => setSelectedVehicleId(v.id)}
+                    style={[s.optionChip, isActive && { borderColor: '#22C55E', backgroundColor: 'rgba(34,197,94,0.1)' }]}
+                  >
+                    <Feather name="truck" size={16} color={isActive ? '#22C55E' : 'rgba(255,255,255,0.4)'} />
+                    <Text style={{ color: isActive ? '#22C55E' : 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>{v.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* Privacy */}
+          <View>
+             <Text style={s.label}>Privacy</Text>
+             <View style={{ flexDirection: 'row', gap: 12 }}>
+                <Pressable onPress={() => setPrivacy('Public')} style={[s.optionChip, privacy === 'Public' && { borderColor: 'white', backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+                   <Feather name="globe" size={16} color={privacy === 'Public' ? 'white' : 'rgba(255,255,255,0.4)'} />
+                   <Text style={{ color: privacy === 'Public' ? 'white' : 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>Public</Text>
+                </Pressable>
+                <Pressable onPress={() => setPrivacy('Private')} style={[s.optionChip, privacy === 'Private' && { borderColor: 'white', backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+                   <Feather name="lock" size={16} color={privacy === 'Private' ? 'white' : 'rgba(255,255,255,0.4)'} />
+                   <Text style={{ color: privacy === 'Private' ? 'white' : 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>Only Me</Text>
+                </Pressable>
+             </View>
+          </View>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  checkCircle: {
-    width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(34,197,94,0.15)', borderWidth: 2, borderColor: 'rgba(34,197,94,0.3)',
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)'
   },
-  statCard: {
-    flex: 1, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center',
-    backgroundColor: '#111120', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+  iconBtn: {
+    width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center'
   },
-  streakCard: {
-    borderRadius: 16, padding: 16,
-    backgroundColor: 'rgba(234,179,8,0.08)', borderWidth: 1, borderColor: 'rgba(234,179,8,0.2)',
+  saveBtn: {
+    backgroundColor: 'white', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20
   },
-  milestoneCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderRadius: 16, paddingHorizontal: 12, paddingVertical: 12,
-    backgroundColor: 'rgba(75,126,255,0.1)', borderWidth: 1, borderColor: 'rgba(75,126,255,0.2)',
+  label: {
+    color: 'white', fontSize: 16, fontWeight: '700', marginBottom: 12
   },
-  primaryBtn: {
-    height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
-    flexDirection: 'row', gap: 8,
-    backgroundColor: '#4B7EFF',
-    shadowColor: '#4B7EFF', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 12,
+  input: {
+    backgroundColor: '#111120', color: 'white', fontSize: 16, padding: 16,
+    borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)'
   },
-  ghostBtn: {
-    height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
-    flexDirection: 'row', gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  addPhotoBtn: {
+    width: 100, height: 100, borderRadius: 16, backgroundColor: '#111120',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center'
   },
+  optionChip: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 12, backgroundColor: '#111120', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)'
+  },
+  iconOption: {
+    width: 50, height: 50, borderRadius: 25, backgroundColor: '#111120',
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)'
+  }
 });

@@ -1,5 +1,4 @@
 import { Link as RouterLink } from "expo-router";
-import Animated from "react-native-reanimated";
 import React from "react";
 import {
   View as RNView,
@@ -42,10 +41,10 @@ export const Pressable = RNPressable;
 // TextInput
 export const TextInput = RNTextInput;
 
-// AnimatedScrollView
-export const AnimatedScrollView = Animated.ScrollView;
+// AnimatedScrollView (non-animated since Reanimated removed)
+export const AnimatedScrollView = RNScrollView;
 
-const AnimatedExpoImage = Animated.createAnimatedComponent(RNImage);
+const AnimatedExpoImage = RNImage;
 
 function CSSImage(props: any) {
   const { objectFit, objectPosition, ...style } =

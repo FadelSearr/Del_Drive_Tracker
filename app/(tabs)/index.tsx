@@ -133,6 +133,19 @@ export default function HUDTabScreen() {
         setErrorMsg('Permission to access location was denied');
         return;
       }
+      let bgStatus = await Location.requestBackgroundPermissionsAsync();
+      if (bgStatus.status === 'granted') {
+        await Location.startLocationUpdatesAsync('BACKGROUND_LOCATION_TASK', {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 1000,
+          distanceInterval: 1,
+          foregroundService: {
+            notificationTitle: 'Del Road',
+            notificationBody: 'Tracking your drive in the background',
+            notificationColor: '#3B82F6',
+          },
+        });
+      }
 
       locationSubscription = await Location.watchPositionAsync(
         {
@@ -191,6 +204,7 @@ export default function HUDTabScreen() {
       clearInterval(interval);
       if (locationSubscription) locationSubscription.remove();
       if (accelSubscription) accelSubscription.remove();
+      Location.stopLocationUpdatesAsync('BACKGROUND_LOCATION_TASK').catch(() => {});
     };
   }, []);
 
