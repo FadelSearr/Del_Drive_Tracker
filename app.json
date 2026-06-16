@@ -90,7 +90,9 @@
           "savePhotosPermission": "Allow $(PRODUCT_NAME) to save videos to your photo library.",
           "isAccessMediaLocationEnabled": true
         }
-      ]
+      ],
+      "expo-build-properties",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true
