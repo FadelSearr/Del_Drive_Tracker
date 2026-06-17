@@ -13,6 +13,7 @@ const LOCATION_TASK_NAME = 'background-location-task';
 
 let TaskManager: any = null;
 try {
+// eslint-disable-next-line @typescript-eslint/no-require-imports
   TaskManager = require('expo-task-manager');
   TaskManager.defineTask(LOCATION_TASK_NAME, ({ data, error }: { data: any; error: any }) => {
     if (error) {
@@ -24,7 +25,7 @@ try {
       console.log("Background Location received:", locations);
     }
   });
-} catch (e) {
+} catch {
   console.log("TaskManager is not available (likely in Expo Go).");
 }
 
@@ -46,16 +47,12 @@ export default function MapTabScreen() {
   const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number; longitude: number; speed?: number}[]>([]);
   const [isTracking, setIsTracking] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
-  const [mapMode, setMapMode] = useState<'follow' | 'free' | '3d'>('follow');
-  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [mapMode] = useState<'follow' | 'free' | '3d'>('follow');
+  const [showHeatmap] = useState(false);
   const [heatmapCoords, setHeatmapCoords] = useState<{latitude: number; longitude: number; speed?: number}[]>([]);
   
-  // Segment Creation State
-  const [isCreatingSegment, setIsCreatingSegment] = useState(false);
-  const [segmentStartCoords, setSegmentStartCoords] = useState<{latitude: number; longitude: number} | null>(null);
-  
   // HUD Messages & Speed Zone tracking
-  const [activeZone, setActiveZone] = useState<{ id: string; startTime: number } | null>(null);
+  const [, setActiveZone] = useState<{ id: string; startTime: number } | null>(null);
   const activeZoneRef = React.useRef<{ id: string; startTime: number } | null>(null);
   const [hudMessage, setHudMessage] = useState<{ title: string; subtitle: string; type: 'trap' | 'zone_start' | 'zone_end' } | null>(null);
   
@@ -71,12 +68,6 @@ export default function MapTabScreen() {
   
   const [currentCarName, setCurrentCarName] = useState('Porsche 911 GT3 RS');
   
-  useEffect(() => {
-    Database.init();
-    loadHeatmapData();
-    loadSegments();
-  }, []);
-
   const [allSegments, setAllSegments] = useState<any[]>([]);
   const loadSegments = async () => {
     const segments = await Database.getAllSegments();
@@ -103,6 +94,14 @@ export default function MapTabScreen() {
     });
     setHeatmapCoords(coords);
   };
+
+  useEffect(() => {
+    Database.init();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadHeatmapData();
+
+    loadSegments();
+  }, []);
 
   // Real-time tracking stats
   const [seconds, setSeconds] = useState(0);
@@ -228,7 +227,7 @@ export default function MapTabScreen() {
       try {
         const result = await Location.requestBackgroundPermissionsAsync();
         bgStatus = result.status;
-      } catch (e) {
+      } catch {
         console.log("Background location permission request skipped or failed (expected in Expo Go without config plugins)");
       }
       
@@ -355,6 +354,7 @@ export default function MapTabScreen() {
       );
     })();
     return () => { if (locationSubscription) locationSubscription.remove(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatTime = (totalSeconds: number) => {

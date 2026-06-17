@@ -15,3 +15,10 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
     console.log('Received background locations:', locations.length);
   }
 });
+
+export class LocationService {
+  static getCurrentSpeed(): number {
+    return 0; // Stub for now, update with real location tracking logic
+  }
+}
+

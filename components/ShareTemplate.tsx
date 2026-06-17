@@ -75,6 +75,7 @@ export default function ShareTemplate({
   const maxSpeed = points.reduce((m, p) => Math.max(m, p.speed), 0.01);
 
   // Animated marker
+  // eslint-disable-next-line react-hooks/refs
   const progress = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!shouldAnimate || points.length < 2) return;
@@ -92,14 +93,16 @@ export default function ShareTemplate({
         useNativeDriver: false,
       }).start();
     });
-  }, [shouldAnimate, points.length]);
+  }, [shouldAnimate, points.length, progress]);
 
   // Interpolated marker position
+  // eslint-disable-next-line react-hooks/refs
   const markerX = progress.interpolate({
     inputRange: points.map((_, i) => i / Math.max(1, points.length - 1)),
     outputRange: points.map(p => p.x),
     extrapolate: 'clamp',
   });
+  // eslint-disable-next-line react-hooks/refs
   const markerY = progress.interpolate({
     inputRange: points.map((_, i) => i / Math.max(1, points.length - 1)),
     outputRange: points.map(p => p.y),

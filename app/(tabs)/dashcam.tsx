@@ -1,5 +1,5 @@
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, ActivityIndicator, AppState, AppStateStatus } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
@@ -21,11 +21,14 @@ export default function DashcamScreen() {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const backgroundEnteredAt = useRef<number | null>(null);
 
+  const [now, setNow] = useState(() => Date.now());
+
   // Update speed from LocationService
   useEffect(() => {
     const interval = setInterval(() => {
       const speed = LocationService.getCurrentSpeed();
       setCurrentSpeed(speed);
+      setNow(Date.now());
     }, 1000);
 
     return () => clearInterval(interval);
@@ -127,47 +130,46 @@ export default function DashcamScreen() {
         setIsRecording(true);
         setBackgroundDuration(0); // Reset background time for new recording
 
-        // Start recording with callback
+        // Start recording with promise
         cameraRef.current.recordAsync({
           maxDuration: 3600, // 1 hour max
-          onRecordingFinished: async (video) => {
-            console.log('Recording finished:', video.uri);
-            
-            try {
-              // Save video using CameraService
-              const metadata = await CameraService.saveRecording(
-                video.uri,
-                newTripId,
-                facing
+        }).then(async (video) => {
+          if (!video) return;
+          console.log('Recording finished:', video.uri);
+          
+          try {
+            // Save video using CameraService
+            const metadata = await CameraService.saveRecording(
+              video.uri,
+              newTripId,
+              facing
+            );
+
+            setIsSaving(false);
+
+            if (metadata) {
+              const durationMin = Math.floor(metadata.duration / 60);
+              const durationSec = metadata.duration % 60;
+              const sizeMB = (metadata.fileSize / (1024 * 1024)).toFixed(1);
+              
+              Alert.alert(
+                'Video Saved',
+                `Duration: ${durationMin}m ${durationSec}s\nSize: ${sizeMB} MB`,
+                [{ text: 'OK' }]
               );
-
-              setIsSaving(false);
-
-              if (metadata) {
-                const durationMin = Math.floor(metadata.duration / 60);
-                const durationSec = metadata.duration % 60;
-                const sizeMB = (metadata.fileSize / (1024 * 1024)).toFixed(1);
-                
-                Alert.alert(
-                  'Video Saved',
-                  `Duration: ${durationMin}m ${durationSec}s\nSize: ${sizeMB} MB`,
-                  [{ text: 'OK' }]
-                );
-              } else {
-                Alert.alert('Error', 'Failed to save video');
-              }
-            } catch (error) {
-              console.error('Error saving video:', error);
-              setIsSaving(false);
+            } else {
               Alert.alert('Error', 'Failed to save video');
             }
-          },
-          onRecordingError: (error) => {
-            console.error('Recording error:', error);
-            setIsRecording(false);
+          } catch (error) {
+            console.error('Error saving video:', error);
             setIsSaving(false);
-            Alert.alert('Recording Error', 'Failed to record video');
-          },
+            Alert.alert('Error', 'Failed to save video');
+          }
+        }).catch((error) => {
+          console.error('Recording error:', error);
+          setIsRecording(false);
+          setIsSaving(false);
+          Alert.alert('Recording Error', 'Failed to record video');
         });
 
         Alert.alert('Recording Started', 'Dashcam is recording');
@@ -182,7 +184,7 @@ export default function DashcamScreen() {
 
   // Calculate recording duration (includes time spent in background)
   const foregroundSeconds = recordingStartTime
-    ? Math.floor((Date.now() - recordingStartTime) / 1000)
+    ? Math.floor((now - recordingStartTime) / 1000)
     : 0;
   const recordingDuration = foregroundSeconds + backgroundDuration;
 

@@ -232,6 +232,7 @@ export default function LeafletMap({
 
   useEffect(() => {
     injectUpdate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coordinates, userLocation, mapMode, showHeatmap, heatmapData, autoFitBounds, extraLayers]);
 
   return (

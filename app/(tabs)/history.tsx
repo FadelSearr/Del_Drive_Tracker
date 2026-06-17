@@ -10,7 +10,6 @@ import VideoPlayer from '@/components/VideoPlayer';
 import VideoEditor from '@/components/VideoEditor';
 import { VideoShareService } from '@/services/VideoShareService';
 
-const speedColors = ['#3B82F6', '#22C55E', '#F97316', '#EF4444'];
 const speedCategories = [
   { label: 'City', range: '0–40', color: '#22C55E' },
   { label: 'Suburban', range: '40–80', color: '#EAB308' },
@@ -21,7 +20,7 @@ const speedCategories = [
 export default function HistoryTabScreen() {
   const [drives, setDrives] = useState<DriveData[]>([]);
   const [tab, setTab] = useState<'activities' | 'stats'>('activities');
-  const [refreshKey, setRefreshKey] = useState(0);
+
   const [driveVideos, setDriveVideos] = useState<Record<string, VideoMetadata[]>>({});
   const [videoPlayerUri, setVideoPlayerUri] = useState<string | null>(null);
   const [videoPlayerTitle, setVideoPlayerTitle] = useState<string | undefined>(undefined);
@@ -34,7 +33,7 @@ export default function HistoryTabScreen() {
   const [editorVideoTitle, setEditorVideoTitle] = useState<string | undefined>(undefined);
 
   // Insights Data
-  const [heatmapCoords, setHeatmapCoords] = useState<{latitude: number; longitude: number; speed?: number}[]>([]);
+
   const [segments, setSegments] = useState<SegmentData[]>([]);
   const [totalDistance, setTotalDistance] = useState(0);
   const [totalDrives, setTotalDrives] = useState(0);
@@ -89,10 +88,10 @@ export default function HistoryTabScreen() {
         setTotalDuration(`${hrs}h ${mins}m`);
         setTotalDistance(dist);
         setMaxSpeedOverall(topS);
-        setHeatmapCoords(coords);
+
       };
       loadData();
-    }, [refreshKey])
+    }, [])
   );
 
   // Load videos for drives that have them
@@ -176,23 +175,6 @@ export default function HistoryTabScreen() {
     });
   };
 
-  const handleDelete = (id: number, title: string) => {
-    Alert.alert(
-      "Delete Drive",
-      `Are you sure you want to delete "${title}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: async () => {
-            await Database.deleteDrive(id);
-            setRefreshKey(prev => prev + 1);
-          }
-        }
-      ]
-    );
-  };
 
   const totalDistanceStr = totalDistance.toFixed(1);
 

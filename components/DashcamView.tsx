@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { StyleSheet, View, Text, Pressable, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, Pressable } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Feather } from '@expo/vector-icons';
-import { SvgXml } from 'react-native-svg';
 
 interface DashcamViewProps {
   isRecording: boolean;
@@ -16,15 +14,7 @@ export default function DashcamView({ isRecording, speed, gForce, onRecordingCom
   const cameraRef = useRef<CameraView>(null);
   const [isReady, setIsReady] = useState(false);
 
-  useEffect(() => {
-    if (isRecording && isReady) {
-      startRecording();
-    } else if (!isRecording && isReady) {
-      stopRecording();
-    }
-  }, [isRecording, isReady]);
-
-  const startRecording = async () => {
+  const startRecording = React.useCallback(async () => {
     if (cameraRef.current) {
       try {
         const video = await cameraRef.current.recordAsync();
@@ -35,13 +25,21 @@ export default function DashcamView({ isRecording, speed, gForce, onRecordingCom
         console.error("Recording error:", e);
       }
     }
-  };
+  }, [onRecordingComplete]);
 
-  const stopRecording = async () => {
+  const stopRecording = React.useCallback(async () => {
     if (cameraRef.current) {
       cameraRef.current.stopRecording();
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isRecording && isReady) {
+      startRecording();
+    } else if (!isRecording && isReady) {
+      stopRecording();
+    }
+  }, [isRecording, isReady, startRecording, stopRecording]);
 
   if (!permission) {
     return <View style={styles.container} />;
@@ -101,8 +99,8 @@ export default function DashcamView({ isRecording, speed, gForce, onRecordingCom
               <View style={styles.gCircle}>
                  <View style={[styles.gDot, { 
                    transform: [
-                     { translateX: (Math.random() - 0.5) * 20 }, 
-                     { translateY: (Math.random() - 0.5) * 20 }
+                     { translateX: (gForce * 5) % 10 }, 
+                     { translateY: (gForce * 3) % 10 }
                    ] 
                  }]} />
               </View>

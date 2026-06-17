@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Modal, Dimensions, ActivityIndicator, Alert } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, Modal, ActivityIndicator } from 'react-native';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEventListener } from 'expo';
 import { Feather } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 
@@ -21,8 +22,6 @@ export default function VideoPlayer({
   speedOverlay = true,
   currentSpeed = 0 
 }: VideoPlayerProps) {
-  const videoRef = useRef<Video>(null);
-  const [status, setStatus] = useState<AVPlaybackStatus | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1.0);
@@ -30,15 +29,46 @@ export default function VideoPlayer({
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
 
-  const { width, height } = Dimensions.get('window');
+
+  const player = useVideoPlayer(videoUri, player => {
+    player.loop = false;
+  });
+
+  useEventListener(player, 'playingChange', ({ isPlaying }) => {
+    setIsPlaying(isPlaying);
+    if (!isPlaying && player.currentTime >= player.duration) {
+      setShowControls(true);
+    }
+  });
+
+  useEventListener(player, 'statusChange', ({ status }) => {
+    if (status === 'loading') {
+      setIsLoading(true);
+    } else {
+      setIsLoading(false);
+    }
+  });
+
+  useEventListener(player, 'timeUpdate', ({ currentTime }) => {
+    setPosition(currentTime);
+  });
+
+  useEventListener(player, 'sourceLoad', ({ duration }) => {
+    setDuration(duration);
+    setIsLoading(false);
+  });
 
   useEffect(() => {
     if (visible) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLoading(true);
       setIsPlaying(false);
       setPosition(0);
+      player.play();
+    } else {
+      player.pause();
     }
-  }, [visible]);
+  }, [visible, player]);
 
   useEffect(() => {
     // Auto-hide controls after 3 seconds
@@ -48,52 +78,36 @@ export default function VideoPlayer({
     }
   }, [showControls, isPlaying]);
 
-  const handlePlayPause = async () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        await videoRef.current.pauseAsync();
-      } else {
-        await videoRef.current.playAsync();
+  const handlePlayPause = () => {
+    if (player.playing) {
+      player.pause();
+    } else {
+      if (player.currentTime >= player.duration) {
+        // eslint-disable-next-line react-hooks/immutability
+        player.currentTime = 0;
       }
-      setIsPlaying(!isPlaying);
+      player.play();
     }
   };
 
-  const handlePlaybackRateChange = async (rate: number) => {
-    if (videoRef.current) {
-      await videoRef.current.setRateAsync(rate, true);
-      setPlaybackRate(rate);
+  const handlePlaybackRateChange = (rate: number) => {
+    // eslint-disable-next-line react-hooks/immutability
+    player.playbackRate = rate;
+    setPlaybackRate(rate);
+  };
+
+  const handleSeek = (value: number) => {
+    if (duration > 0) {
+      // eslint-disable-next-line react-hooks/immutability
+      player.currentTime = value * duration;
     }
   };
 
-  const handleSeek = async (value: number) => {
-    if (videoRef.current && duration > 0) {
-      await videoRef.current.setPositionAsync(value * duration);
-    }
-  };
-
-  const handlePlaybackStatusUpdate = (playbackStatus: AVPlaybackStatus) => {
-    setStatus(playbackStatus);
-    
-    if (playbackStatus.isLoaded) {
-      setIsLoading(false);
-      setDuration(playbackStatus.durationMillis || 0);
-      setPosition(playbackStatus.positionMillis || 0);
-      setIsPlaying(playbackStatus.isPlaying);
-      
-      // Video ended
-      if (playbackStatus.didJustFinish) {
-        setIsPlaying(false);
-        setShowControls(true);
-      }
-    }
-  };
-
-  const formatTime = (millis: number) => {
-    const totalSeconds = Math.floor(millis / 1000);
+  const formatTime = (seconds: number) => {
+    const totalSeconds = Math.floor(seconds);
     const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const secs = totalSeconds % 60;
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleScreenTap = () => {
@@ -113,14 +127,11 @@ export default function VideoPlayer({
           activeOpacity={1} 
           onPress={handleScreenTap}
         >
-          <Video
-            ref={videoRef}
-            source={{ uri: videoUri }}
+          <VideoView
+            player={player}
             style={styles.video}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay={false}
-            isLooping={false}
-            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+            contentFit="contain"
+            nativeControls={false}
           />
 
           {/* Loading Indicator */}
@@ -230,7 +241,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   loadingContainer: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.8)',
@@ -261,7 +272,7 @@ const styles = StyleSheet.create({
     marginTop: -8,
   },
   controlsOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'space-between',
   },
@@ -349,3 +360,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+

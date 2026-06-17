@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, KeyboardAvoidingView, Image } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, KeyboardAvoidingView } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Database, VehicleData, DriveData } from '@/services/Database';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const WEATHER_OPTIONS = [
@@ -21,7 +21,7 @@ const DRIVE_STYLES = [
 export default function SaveDriveScreen() {
   const { driveId } = useLocalSearchParams();
   const [title, setTitle] = useState('');
-  const [photos, setPhotos] = useState<string[]>([]);
+
   const [driveStyle, setDriveStyle] = useState('Normal');
   const [weather, setWeather] = useState('Sunny');
   const [privacy, setPrivacy] = useState('Public');

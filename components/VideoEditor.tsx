@@ -1,16 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
   Text,
   TouchableOpacity,
   Modal,
-  Dimensions,
   ActivityIndicator,
   Alert,
   ScrollView,
 } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEventListener } from 'expo';
 import { Feather } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 
@@ -33,13 +33,12 @@ export default function VideoEditor({
   onSave,
   videoTitle,
 }: VideoEditorProps) {
-  const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   
-  // Trim points (in milliseconds)
+  // Trim points (in seconds)
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
   
@@ -49,10 +48,46 @@ export default function VideoEditor({
   // Preview mode
   const [isPreviewMode, setIsPreviewMode] = useState(false);
 
-  const { width } = Dimensions.get('window');
+
+  const player = useVideoPlayer(videoUri, player => {
+    player.loop = false;
+  });
+
+  useEventListener(player, 'playingChange', ({ isPlaying }) => {
+    setIsPlaying(isPlaying);
+  });
+
+  useEventListener(player, 'statusChange', ({ status }) => {
+    if (status === 'loading') {
+      setIsLoading(true);
+    } else {
+      setIsLoading(false);
+    }
+  });
+
+  useEventListener(player, 'timeUpdate', ({ currentTime }) => {
+    setPosition(currentTime);
+    
+    // Auto-stop at trim end in preview mode
+    if (isPreviewMode && currentTime >= trimEnd) {
+      player.pause();
+      // eslint-disable-next-line react-hooks/immutability
+      player.currentTime = trimStart;
+      setIsPreviewMode(false);
+    }
+  });
+
+  useEventListener(player, 'sourceLoad', ({ duration }) => {
+    setDuration(duration);
+    setIsLoading(false);
+    if (trimEnd === 0 && duration > 0) {
+      setTrimEnd(duration);
+    }
+  });
 
   useEffect(() => {
     if (visible) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLoading(true);
       setIsPlaying(false);
       setPosition(0);
@@ -60,58 +95,37 @@ export default function VideoEditor({
       setTrimEnd(0);
       setPlaybackRate(1.0);
       setIsPreviewMode(false);
+    } else {
+      player.pause();
     }
-  }, [visible]);
+  }, [visible, player]);
 
-  const handlePlaybackStatusUpdate = (playbackStatus: AVPlaybackStatus) => {
-    if (playbackStatus.isLoaded) {
-      setIsLoading(false);
-      const durationMs = playbackStatus.durationMillis || 0;
-      setDuration(durationMs);
-      setPosition(playbackStatus.positionMillis || 0);
-      setIsPlaying(playbackStatus.isPlaying);
-
-      // Initialize trim end to full duration on first load
-      if (trimEnd === 0 && durationMs > 0) {
-        setTrimEnd(durationMs);
+  const handlePlayPause = () => {
+    if (player.playing) {
+      player.pause();
+    } else {
+      // Start from trim start if at beginning or end
+      if (player.currentTime < trimStart || player.currentTime >= trimEnd) {
+        // eslint-disable-next-line react-hooks/immutability
+        player.currentTime = trimStart;
       }
-
-      // Auto-stop at trim end in preview mode
-      if (isPreviewMode && playbackStatus.positionMillis >= trimEnd) {
-        videoRef.current?.pauseAsync();
-        videoRef.current?.setPositionAsync(trimStart);
-        setIsPreviewMode(false);
-      }
+      player.play();
     }
   };
 
-  const handlePlayPause = async () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        await videoRef.current.pauseAsync();
-      } else {
-        // Start from trim start if at beginning
-        if (position < trimStart || position >= trimEnd) {
-          await videoRef.current.setPositionAsync(trimStart);
-        }
-        await videoRef.current.playAsync();
-      }
-    }
+  const handlePreview = () => {
+    setIsPreviewMode(true);
+    // eslint-disable-next-line react-hooks/immutability
+    player.currentTime = trimStart;
+    player.playbackRate = playbackRate;
+    player.play();
   };
 
-  const handlePreview = async () => {
-    if (videoRef.current) {
-      setIsPreviewMode(true);
-      await videoRef.current.setPositionAsync(trimStart);
-      await videoRef.current.setRateAsync(playbackRate, true);
-      await videoRef.current.playAsync();
-    }
-  };
-
-  const handleSeek = async (value: number) => {
-    if (videoRef.current && duration > 0) {
+  const handleSeek = (value: number) => {
+    if (duration > 0) {
       const seekPosition = value * duration;
-      await videoRef.current.setPositionAsync(seekPosition);
+      // eslint-disable-next-line react-hooks/immutability
+      player.currentTime = seekPosition;
     }
   };
 
@@ -130,7 +144,7 @@ export default function VideoEditor({
   };
 
   const handleSave = () => {
-    const trimDuration = (trimEnd - trimStart) / 1000; // Convert to seconds
+    const trimDuration = trimEnd - trimStart; // already in seconds
     
     if (trimDuration < 1) {
       Alert.alert('Invalid Trim', 'Trimmed video must be at least 1 second long');
@@ -146,8 +160,8 @@ export default function VideoEditor({
           text: 'Save',
           onPress: () => {
             onSave({
-              trimStart: trimStart / 1000, // Convert to seconds
-              trimEnd: trimEnd / 1000,
+              trimStart,
+              trimEnd,
               playbackRate,
             });
             onClose();
@@ -157,11 +171,11 @@ export default function VideoEditor({
     );
   };
 
-  const formatTime = (millis: number) => {
-    const totalSeconds = Math.floor(millis / 1000);
+  const formatTime = (seconds: number) => {
+    const totalSeconds = Math.floor(seconds);
     const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const secs = totalSeconds % 60;
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
   const trimmedDuration = trimEnd - trimStart;
@@ -183,14 +197,11 @@ export default function VideoEditor({
 
         {/* Video Preview */}
         <View style={styles.videoContainer}>
-          <Video
-            ref={videoRef}
-            source={{ uri: videoUri }}
+          <VideoView
+            player={player}
             style={styles.video}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay={false}
-            isLooping={false}
-            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+            contentFit="contain"
+            nativeControls={false}
           />
 
           {isLoading && (
@@ -292,7 +303,10 @@ export default function VideoEditor({
                     styles.speedButton,
                     playbackRate === rate && styles.speedButtonActive,
                   ]}
-                  onPress={() => setPlaybackRate(rate)}
+                  onPress={() => {
+                    setPlaybackRate(rate);
+                    player.playbackRate = rate;
+                  }}
                 >
                   <Text
                     style={[
@@ -378,7 +392,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   loadingContainer: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.8)',

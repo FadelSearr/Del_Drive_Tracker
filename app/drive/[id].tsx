@@ -7,14 +7,14 @@ import { Feather, FontAwesome } from '@expo/vector-icons';
 import ShareTemplate from '@/components/ShareTemplate';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import { Database, DriveData } from '@/services/Database';
 
 let ImagePicker: any = null;
-try { ImagePicker = require('expo-image-picker'); } catch (e) {}
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+try { ImagePicker = require('expo-image-picker'); } catch {}
 const isImagePickerAvailable = !!(ImagePicker && ImagePicker.launchImageLibraryAsync);
 
 type VideoDuration = 10 | 20 | 30 | 'dynamic';
-
-import { Database, DriveData } from '@/services/Database';
 
 export default function DriveDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -35,9 +35,7 @@ export default function DriveDetailScreen() {
   const [segmentName, setSegmentName] = useState('');
 
   // Recap Stats
-  const [smoothness, setSmoothness] = useState(90);
-  const [flow, setFlow] = useState(85);
-  const [terrain, setTerrain] = useState('Flat');
+  // Recap Stats
   const [heatmapCoords, setHeatmapCoords] = useState<{latitude: number, longitude: number}[]>([]);
 
   useEffect(() => {
@@ -57,12 +55,6 @@ export default function DriveDetailScreen() {
         setIsFavorite(!!data?.isFavorite);
         
         // Mock calculations for recap based on data
-        if (data) {
-           const topSpeed = parseFloat(data.topSpeed) || 0;
-           setSmoothness(Math.min(100, Math.max(0, 100 - (data.brakePressed * 2))));
-           setFlow(Math.min(100, Math.max(0, 100 - (data.stopsCount * 5))));
-           setTerrain((data.altitude && parseInt(data.altitude) > 100) ? 'Hilly' : 'Flat');
-        }
       });
     }
   }, [id]);
@@ -82,7 +74,7 @@ export default function DriveDetailScreen() {
         allowsEditing: true, aspect: [9, 16], quality: 1,
       });
       if (!result.canceled) { setBgImage(result.assets[0].uri); setBgVideo(undefined); }
-    } catch (e) {}
+    } catch {}
   };
 
   const pickVideo = async () => {
@@ -96,7 +88,7 @@ export default function DriveDetailScreen() {
         quality: 1,
       });
       if (!result.canceled) { setBgVideo(result.assets[0].uri); setBgImage(undefined); }
-    } catch (e) { Alert.alert('Error', 'Could not pick video'); }
+    } catch { Alert.alert('Error', 'Could not pick video'); }
   };
 
   const handleShare = async () => {
@@ -107,7 +99,7 @@ export default function DriveDetailScreen() {
           await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share your drive' });
         }
       }
-    } catch (err) {}
+    } catch {}
   };
 
   const saveSegmentFromHistory = async () => {

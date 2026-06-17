@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { StyleSheet, Dimensions, SafeAreaView, TouchableOpacity } from 'react-native';
+import { StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { View, Text } from '@/components/Themed';
 import { Stack, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const { width, height } = Dimensions.get('window');
 
 export default function OnboardingScreen() {
   const [step, setStep] = useState(0);

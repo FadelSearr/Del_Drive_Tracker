@@ -1,14 +1,12 @@
 import '../global.css';
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider, Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import '@/services/LocationService'; // Register background tasks
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { supabase } from '@/services/Supabase';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 
 export {
@@ -49,24 +47,21 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const [session, setSession] = useState<Session | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
-      setSession(session);
       if (!session) {
         router.replace('/login');
       }
     });
 
     supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
-      setSession(session);
       if (!session) {
         router.replace('/login');
       }
     });
-  }, []);
+  }, [router]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

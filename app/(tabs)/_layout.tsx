@@ -2,13 +2,11 @@ import React from 'react';
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
 import { Platform, StyleSheet } from 'react-native';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme() ?? 'dark';
-  const themeColors = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
+
+
 
   return (
     <Tabs

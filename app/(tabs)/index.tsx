@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Animated } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
 import * as Location from 'expo-location';
@@ -69,65 +69,21 @@ function buildSpeedometerSvg(speed: number, maxSpeed: number = 200): string {
   </svg>`;
 }
 
-// --- G-Force Crosshair SVG ---
-function buildGForceSvg(gForce: number, tick: number): string {
-  const dotX = Math.sin(tick * 0.8) * Math.min(gForce, 1.5) * 0.55;
-  const dotY = Math.cos(tick * 0.6) * Math.min(gForce, 1.5) * 0.35;
-  return `<svg width="72" height="72" viewBox="-1 -1 2 2">
-    <circle cx="0" cy="0" r="1" fill="none" stroke="#1E2040" stroke-width="0.06" />
-    <circle cx="0" cy="0" r="0.66" fill="none" stroke="#1A1C38" stroke-width="0.04" />
-    <circle cx="0" cy="0" r="0.33" fill="none" stroke="#161830" stroke-width="0.03" />
-    <line x1="-1" y1="0" x2="1" y2="0" stroke="#1A1C38" stroke-width="0.04" />
-    <line x1="0" y1="-1" x2="0" y2="1" stroke="#1A1C38" stroke-width="0.04" />
-    <circle cx="${dotX * 0.8}" cy="${dotY * 0.8}" r="0.14" fill="rgba(249,115,22,0.25)" />
-    <circle cx="${dotX}" cy="${dotY}" r="0.1" fill="#F97316" />
-    <circle cx="${dotX}" cy="${dotY}" r="0.05" fill="white" />
-  </svg>`;
-}
-
-// --- Compass SVG ---
-function buildCompassSvg(heading: number): string {
-  const cardinals = [
-    { d: 'N', angle: -90, color: '#EF4444' },
-    { d: 'E', angle: 0, color: '#3A4060' },
-    { d: 'S', angle: 90, color: '#3A4060' },
-    { d: 'W', angle: 180, color: '#3A4060' },
-  ];
-  let labels = '';
-  cardinals.forEach(c => {
-    const a = c.angle * (Math.PI / 180);
-    const x = 36 + Math.cos(a) * 22;
-    const y = 36 + Math.sin(a) * 22 + 4;
-    labels += `<text x="${x}" y="${y}" text-anchor="middle" fill="${c.color}" font-size="9" font-weight="700">${c.d}</text>`;
-  });
-  return `<svg width="72" height="72" viewBox="0 0 72 72">
-    <circle cx="36" cy="36" r="32" fill="#0E0E1C" stroke="#1E2040" stroke-width="2" />
-    ${labels}
-    <g transform="rotate(${heading} 36 36)">
-      <polygon points="36,10 38.5,36 36,42 33.5,36" fill="#EF4444" />
-      <polygon points="36,62 38.5,36 36,30 33.5,36" fill="#2A3060" />
-    </g>
-    <circle cx="36" cy="36" r="4" fill="#1A1A2E" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" />
-  </svg>`;
-}
 
 export default function HUDTabScreen() {
   const [speed, setSpeed] = useState(0);
   const [gForce, setGForce] = useState(0.12);
-  const [topSpeed, setTopSpeed] = useState(0);
-  const [avgSpeed, setAvgSpeed] = useState(0);
-  const [distance, setDistance] = useState(0); // in km
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
   const tickRef = useRef(0);
   const lastLocation = useRef<Location.LocationObject | null>(null);
-  const startTime = useRef<number>(Date.now());
+  const startTime = useRef<number>(0);
 
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
     let accelSubscription: any = null;
 
     (async () => {
+      startTime.current = Date.now();
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setErrorMsg('Permission to access location was denied');
@@ -157,31 +113,6 @@ export default function HUDTabScreen() {
           const speedInMs = location.coords.speed || 0;
           const currentSpeedKmH = Math.max(0, speedInMs * 3.6);
           setSpeed(currentSpeedKmH);
-          
-          setTopSpeed(prev => Math.max(prev, currentSpeedKmH));
-
-          if (lastLocation.current) {
-            // Calculate distance in km
-            const R = 6371; // Radius of the earth in km
-            const dLat = (location.coords.latitude - lastLocation.current.coords.latitude) * (Math.PI / 180);
-            const dLon = (location.coords.longitude - lastLocation.current.coords.longitude) * (Math.PI / 180);
-            const a = 
-              Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lastLocation.current.coords.latitude * (Math.PI / 180)) * Math.cos(location.coords.latitude * (Math.PI / 180)) * 
-              Math.sin(dLon / 2) * Math.sin(dLon / 2); 
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
-            const d = R * c; // Distance in km
-            
-            setDistance(prev => {
-              const newDist = prev + d;
-              // Calculate avg speed
-              const hoursElapsed = (Date.now() - startTime.current) / 3600000;
-              if (hoursElapsed > 0) {
-                setAvgSpeed(newDist / hoursElapsed);
-              }
-              return newDist;
-            });
-          }
           lastLocation.current = location;
         }
       );
@@ -197,7 +128,6 @@ export default function HUDTabScreen() {
     // Tick for G-Force animation
     const interval = setInterval(() => {
       tickRef.current += 0.1;
-      setTick(tickRef.current);
     }, 100);
 
     return () => {
