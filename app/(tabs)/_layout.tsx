@@ -46,13 +46,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Feather name="map" size={20} color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="dashcam"
-        options={{
-          title: 'Dashcam',
-          tabBarIcon: ({ color }) => <Feather name="video" size={20} color={color} />,
-        }}
-      />
+
       <Tabs.Screen
         name="history"
         options={{

@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, Pressable, Alert } from 'react-native';
+import DashcamView from '@/components/DashcamView';
 import LeafletMap from '@/components/LeafletMap';
-import * as Location from 'expo-location';
-import { Accelerometer } from 'expo-sensors';
-import { router } from 'expo-router';
 import { Database, SegmentAttempt } from '@/services/Database';
 import { GamificationEngine } from '@/services/GamificationEngine';
 import { Feather } from '@expo/vector-icons';
-import DashcamView from '@/components/DashcamView';
+import * as MediaLibrary from 'expo-media-library/legacy';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Location from 'expo-location';
+import { router } from 'expo-router';
+import { FFmpegKit, ReturnCode } from '@wokcito/ffmpeg-kit-react-native';
+import { Accelerometer } from 'expo-sensors';
+import React, { useEffect, useState } from 'react';
+import { Alert, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 const LOCATION_TASK_NAME = 'background-location-task';
 
@@ -59,7 +62,11 @@ export default function MapTabScreen() {
   // Dashcam State
   const [isDashcamActive, setIsDashcamActive] = useState(false);
   const [dashcamUri, setDashcamUri] = useState<string | null>(null);
+  const dashcamUriRef = React.useRef<string | null>(null);
+  const telemetryDataRef = React.useRef<{time: number, speed: number}[]>([]);
+  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
   const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+
 
   const updateActiveZoneState = (zone: { id: string; startTime: number } | null) => {
     activeZoneRef.current = zone;
@@ -409,6 +416,7 @@ export default function MapTabScreen() {
     setBrakePressedCount(0); setMaxAcc(0); setMaxDec(0);
     setLeftTurnsCount(0); setRightTurnsCount(0);
     setStopsCount(0); setStopsDurationSecs(0); setLaneChangesCount(0);
+    dashcamUriRef.current = null; setDashcamUri(null);
     if (location && location.coords) {
       const initialSpeed = Math.max(0, Math.round((location.coords.speed || 0) * 3.6));
       setRouteCoordinates([{ latitude: location.coords.latitude, longitude: location.coords.longitude, speed: initialSpeed }]);
@@ -418,19 +426,29 @@ export default function MapTabScreen() {
     }
   };
 
+
   const handleEndDrive = async () => {
     if (isRecordingVideo) {
       setIsRecordingVideo(false);
-      // We'll wait a bit for the URI to be set via onRecordingComplete if needed, 
-      // but usually, we can just end and the URI will be updated in state.
+      // Wait for the recording callback to populate the Ref (up to 5 seconds)
+      let attempts = 0;
+      while (!dashcamUriRef.current && attempts < 10) {
+        await new Promise(r => setTimeout(r, 500));
+        attempts++;
+      }
     }
     
+    const finalDashcamUri = dashcamUriRef.current;
+    console.log("Starting final save process with URI:", finalDashcamUri);
     const finalDuration = formatTime(seconds);
     const finalDistance = `${distance.toFixed(1)} km`;
     const finalTopSpeed = `${topSpeed} km/h`;
-    const hours = seconds / 3600;
-    const avg = hours > 0 ? Math.round(distance / hours) : 0;
-    const finalAvgSpeed = `${avg} km/h`;
+    const validSpeeds = routeCoordinates.filter(c => c.speed !== undefined).map(c => c.speed as number);
+    const avgSpeedVal = validSpeeds.length > 0 
+      ? Math.round(validSpeeds.reduce((a, b) => a + b, 0) / validSpeeds.length)
+      : 0;
+    const finalAvgSpeed = `${avgSpeedVal} km/h`;
+
     const finalTopBrakeForce = `${(maxDec / 9.81).toFixed(2)} G`;
 
     // Fetch the actual current vehicle right before saving
@@ -455,7 +473,7 @@ export default function MapTabScreen() {
     const newlyAchieved = await GamificationEngine.evaluateDrive(newDrive);
     const achievedStr = JSON.stringify(newlyAchieved);
     setRouteCoordinates([]); setSeconds(0); setDistance(0); setTopSpeed(0);
-    setMaxAcc(0); setMaxDec(0); setIsTracking(false); setHasStarted(false);
+    setMaxAcc(0); setMaxDec(0); setIsTracking(false); setHasStarted(false); setIsDashcamActive(false);
     loadHeatmapData();
     // Stop background tracking
     try {
@@ -467,8 +485,82 @@ export default function MapTabScreen() {
       console.log("Error stopping background location", e);
     }
 
+    // Background process for Gallery saving & FFmpeg Overlay
+    (async () => {
+      const uriToSave = dashcamUriRef.current;
+      const telemetry = telemetryDataRef.current;
+      
+      if (uriToSave) {
+        setIsProcessingVideo(true);
+        try {
+          console.log("Parent processing dashcam save:", uriToSave);
+          const { status } = await MediaLibrary.requestPermissionsAsync();
+          if (status === 'granted') {
+            
+            let finalOutputUri = uriToSave;
+            
+            if (telemetry && telemetry.length > 0) {
+              console.log("Telemetry found, starting FFmpeg burn-in...");
+              
+              // 1. Generate SRT File
+              let srtContent = '';
+              for (let i = 0; i < telemetry.length; i++) {
+                const current = telemetry[i];
+                const nextTime = i < telemetry.length - 1 ? telemetry[i+1].time : current.time + 1;
+                
+                const formatTime = (secs: number) => {
+                  const d = new Date(secs * 1000);
+                  return `00:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')},000`;
+                };
+                
+                srtContent += `${i + 1}\n`;
+                srtContent += `${formatTime(current.time)} --> ${formatTime(nextTime)}\n`;
+                srtContent += `SPEED: ${current.speed} KM/H\n\n`;
+              }
+              
+              const srtPath = `${FileSystem.cacheDirectory}overlay.srt`.replace('file://', '');
+              await FileSystem.writeAsStringAsync(`${FileSystem.cacheDirectory}overlay.srt`, srtContent);
+              
+              // 2. FFmpeg Command
+              const outputPath = `${FileSystem.cacheDirectory}processed_dashcam_${Date.now()}.mp4`.replace('file://', '');
+              
+              // drawtext is tricky with fonts on mobile, so we use the subtitles filter which is built-in
+              const command = `-y -i "${uriToSave.replace('file://', '')}" -vf "subtitles='${srtPath}':force_style='FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,MarginV=50'" -c:a copy "${outputPath}"`;
+              
+              console.log("Executing FFmpeg...");
+              const session = await FFmpegKit.execute(command);
+              const returnCode = await session.getReturnCode();
+              
+              if (ReturnCode.isSuccess(returnCode)) {
+                console.log("FFmpeg success!");
+                finalOutputUri = `file://${outputPath}`;
+              } else {
+                console.error("FFmpeg failed", await session.getLogs());
+              }
+            }
+
+            // Fix extension if needed
+            if (!finalOutputUri.toLowerCase().endsWith('.mp4')) {
+              const newPath = `${finalOutputUri}.mp4`;
+              await FileSystem.moveAsync({ from: finalOutputUri, to: newPath });
+              finalOutputUri = newPath;
+            }
+            const asset = await MediaLibrary.createAssetAsync(finalOutputUri);
+            console.log("PARENT: Video successfully saved to gallery:", asset.id);
+          }
+        } catch (err) {
+          console.error("PARENT: Failed to save to gallery:", err);
+        } finally {
+          setIsProcessingVideo(false);
+          dashcamUriRef.current = null;
+          telemetryDataRef.current = [];
+        }
+      }
+    })();
+
     router.push({
       pathname: '/drive/celebration', params: { driveId: newDrive.id, newlyAchieved: achievedStr } });
+
   };
 
   const currentSpeed = location ? Math.max(0, Math.round((location.coords.speed || 0) * 3.6)) : 0;
@@ -483,7 +575,15 @@ export default function MapTabScreen() {
               isRecording={isRecordingVideo}
               speed={currentSpeed}
               gForce={maxDec > maxAcc ? maxDec / 9.81 : maxAcc / 9.81}
-              onRecordingComplete={(uri) => setDashcamUri(uri)}
+                onRecordingComplete={(uri, telemetry) => {
+                  console.log("Dashcam Recording Saved to Ref:", uri);
+                  dashcamUriRef.current = uri;
+                  if (telemetry) {
+                    telemetryDataRef.current = telemetry;
+                  }
+                  setDashcamUri(uri);
+                }}
+
             />
           ) : (
             <LeafletMap 
@@ -500,47 +600,70 @@ export default function MapTabScreen() {
           </View>
         )}
 
-      {/* Dashcam Toggle Button */}
-      <Pressable 
-        style={[styles.dashcamToggle, isDashcamActive && styles.dashcamToggleActive]}
-        onPress={() => {
-          if (isTracking) return; // Prevent toggle during recording for stability
-          setIsDashcamActive(!isDashcamActive);
-        }}
-      >
-        <Feather name="video" size={20} color={isDashcamActive ? "white" : "rgba(255,255,255,0.6)"} />
-      </Pressable>
-      
-      {/* Top HUD — Speed + Status */}
-      <View style={styles.topHud}>
-        <Text style={{ fontSize: 48, fontWeight: '800', color: 'white', letterSpacing: -2 }}>{currentSpeed}</Text>
-        <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.3)', letterSpacing: 2, marginTop: 2 }}>KM/H</Text>
-      </View>
-
-      {/* Status indicator */}
-      <View style={styles.statusBadge}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusColor }} />
-          <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{statusLabel}</Text>
-        </View>
-      </View>
-
-      {/* HUD Message Banner */}
-      {hudMessage && (
-        <View style={[styles.hudBanner, {
-          backgroundColor: hudMessage.type === 'trap' ? 'rgba(249,115,22,0.92)' : hudMessage.type === 'zone_start' ? 'rgba(75,126,255,0.92)' : 'rgba(34,197,94,0.92)',
-          borderColor: hudMessage.type === 'trap' ? '#F97316' : hudMessage.type === 'zone_start' ? '#4B7EFF' : '#22C55E',
-        }]}>
-          <Feather 
-            name={hudMessage.type === 'trap' ? 'zap' : hudMessage.type === 'zone_start' ? 'play-circle' : 'award'} 
-            size={22} color="#FFF" style={{ marginRight: 12 }} 
-          />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: 'white', fontWeight: '800', fontSize: 12, letterSpacing: 1 }}>{hudMessage.title}</Text>
-            <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11 }}>{hudMessage.subtitle}</Text>
-          </View>
+      {isProcessingVideo && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.8)', alignItems: 'center', justifyContent: 'center', zIndex: 100 }]}>
+          <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginBottom: 12 }}>Processing Video...</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Applying speed overlay. Do not close app.</Text>
         </View>
       )}
+
+      {/* Floating UI Elements */}
+      <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <View style={styles.headerHudContainer}>
+          {/* Dashcam Toggle */}
+          <Pressable 
+            style={[
+              styles.dashcamToggle, 
+              isDashcamActive && styles.dashcamToggleActive,
+              { marginTop: isDashcamActive ? 50 : 0 } // Dynamic margin to avoid READY text
+            ]}
+            onPress={() => {
+
+              if (isTracking) return; 
+              setIsDashcamActive(!isDashcamActive);
+            }}
+          >
+            <Feather name={isDashcamActive ? "map" : "video"} size={20} color="white" />
+          </Pressable>
+
+          {/* Top HUD — Speed (Hidden in Dashcam Mode) */}
+          {!isDashcamActive && (
+            <View style={styles.topHud}>
+              <Text style={{ fontSize: 38, fontWeight: '800', color: 'white', letterSpacing: -1 }}>{currentSpeed}</Text>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>KM/H</Text>
+            </View>
+          )}
+
+          {/* Status badge (Hidden in Dashcam Mode) */}
+          {!isDashcamActive && (
+            <View style={styles.statusBadge}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusColor }} />
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>{statusLabel.toUpperCase()}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+
+        {/* HUD Message Banner */}
+        {hudMessage && (
+          <View style={[styles.hudBanner, {
+            backgroundColor: hudMessage.type === 'trap' ? 'rgba(249,115,22,0.92)' : hudMessage.type === 'zone_start' ? 'rgba(75,126,255,0.92)' : 'rgba(34,197,94,0.92)',
+            borderColor: hudMessage.type === 'trap' ? '#F97316' : hudMessage.type === 'zone_start' ? '#4B7EFF' : '#22C55E',
+          }]}>
+            <Feather 
+              name={hudMessage.type === 'trap' ? 'zap' : hudMessage.type === 'zone_start' ? 'play-circle' : 'award'} 
+              size={22} color="#FFF" style={{ marginRight: 12 }} 
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: 'white', fontWeight: '800', fontSize: 12, letterSpacing: 1 }}>{hudMessage.title}</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11 }}>{hudMessage.subtitle}</Text>
+            </View>
+          </View>
+        )}
+      </SafeAreaView>
+
 
       {/* Bottom Control Panel */}
       <View style={styles.bottomPanel}>
@@ -618,43 +741,48 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#09090F',
   },
-  topHud: {
-    position: 'absolute',
-    top: 60,
-    alignSelf: 'center',
+  headerHudContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 24,
-    backgroundColor: 'rgba(9,9,15,0.8)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 16,
+    marginTop: Platform.OS === 'android' ? 60 : 50,
+  },
+
+  topHud: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    backgroundColor: 'rgba(9,9,15,0.95)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.15)',
+    minWidth: 120,
+    justifyContent: 'center',
+
   },
   statusBadge: {
-    position: 'absolute',
-    top: 60,
-    right: 16,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: 'rgba(9,9,15,0.8)',
+    backgroundColor: 'rgba(9,9,15,0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
+
   hudBanner: {
-    position: 'absolute',
-    top: 140,
-    left: 16,
-    right: 16,
+    marginTop: 20,
+    marginHorizontal: 16,
     padding: 16,
     borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
   },
+
   bottomPanel: {
     position: 'absolute',
-    bottom: 90,
+    bottom: 100,
     left: 16,
     right: 16,
     paddingHorizontal: 16,
@@ -748,18 +876,18 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(34,197,94,0.15)',
   },
   dashcamToggle: {
-    position: 'absolute',
-    top: 60,
-    left: 16,
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(9,9,15,0.8)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(9,9,15,0.95)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+
+
   dashcamToggleActive: {
     backgroundColor: '#4B7EFF',
     borderColor: '#4B7EFF',

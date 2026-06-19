@@ -180,7 +180,10 @@ export default function HistoryTabScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#09090F' }}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
+      <ScrollView 
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Header */}
         <View style={s.header}>
           <View>

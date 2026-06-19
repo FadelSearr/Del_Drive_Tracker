@@ -1,8 +1,8 @@
+import { DriveData } from '@/services/Database';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import Svg, { Circle, Defs, Line, LinearGradient, Stop } from 'react-native-svg';
-import { DriveData } from '@/services/Database';
 
 interface ShareTemplateProps {
   data: DriveData;
@@ -48,14 +48,16 @@ const getNormalizedPoints = (
   return { points, minLat, minLon, scale };
 };
 
-// speed 0–1 → hsl color (blue → cyan → green → yellow → orange → red)
+// speed 0–1 → premium color mapping matching history
 const speedToColor = (t: number) => {
-  // clamp
-  const s = Math.max(0, Math.min(1, t));
-  // hue: 240 (blue) → 0 (red)
-  const hue = 240 - s * 240;
-  return `hsl(${Math.round(hue)},100%,55%)`;
+  if (t < 0.1) return '#4B7EFF'; // Slow: Blue
+  if (t < 0.3) return '#00D4AA'; // Low: Teal
+  if (t < 0.5) return '#30D158'; // Mid: Green
+  if (t < 0.7) return '#FFD60A'; // High: Yellow
+  if (t < 0.9) return '#FF9F0A'; // Fast: Orange
+  return '#FF3B30';              // Peak: Red
 };
+
 
 export default function ShareTemplate({
   data,
@@ -96,16 +98,27 @@ export default function ShareTemplate({
   }, [shouldAnimate, points.length, progress]);
 
   // Interpolated marker position
+  const hasPoints = points && points.length >= 2;
+  const animInputRange = hasPoints
+    ? points.map((_, i) => i / (points.length - 1))
+    : [0, 1];
+  const animOutputRangeX = hasPoints
+    ? points.map(p => p.x)
+    : [0, 0];
+  const animOutputRangeY = hasPoints
+    ? points.map(p => p.y)
+    : [0, 0];
+
   // eslint-disable-next-line react-hooks/refs
   const markerX = progress.interpolate({
-    inputRange: points.map((_, i) => i / Math.max(1, points.length - 1)),
-    outputRange: points.map(p => p.x),
+    inputRange: animInputRange,
+    outputRange: animOutputRangeX,
     extrapolate: 'clamp',
   });
   // eslint-disable-next-line react-hooks/refs
   const markerY = progress.interpolate({
-    inputRange: points.map((_, i) => i / Math.max(1, points.length - 1)),
-    outputRange: points.map(p => p.y),
+    inputRange: animInputRange,
+    outputRange: animOutputRangeY,
     extrapolate: 'clamp',
   });
 
@@ -142,9 +155,7 @@ export default function ShareTemplate({
             nativeControls={false}
           />
           <View style={s.bgOverlay} />
-          <View style={s.dashcamBadge}>
-             <Text style={s.dashcamBadgeText}>DASHCAM OVERLAY</Text>
-          </View>
+          
         </>
       ) : (
         <View style={s.bgSolid}>
@@ -157,13 +168,10 @@ export default function ShareTemplate({
         </View>
       )}
 
-      {/* Radial glow center */}
-      <View style={s.centerGlow} />
 
       {/* Header */}
       <View style={s.header}>
         <View style={s.logoRow}>
-          <View style={s.logoDot} />
           <Text style={s.logoText}>DEL ROAD</Text>
         </View>
         <Text style={s.date}>{data.date}</Text>
@@ -233,16 +241,6 @@ export default function ShareTemplate({
         )}
       </View>
 
-      {/* Speed legend */}
-      <View style={s.legend}>
-        <Text style={s.legendLabel}>SLOW</Text>
-        <View style={s.legendBar}>
-          {['#4B7EFF','#00D4AA','#30D158','#FFD60A','#FF9F0A','#FF3B30'].map((c, i) => (
-            <View key={i} style={[s.legendChip, { backgroundColor: c }]} />
-          ))}
-        </View>
-        <Text style={s.legendLabel}>FAST</Text>
-      </View>
 
       {/* Stats Grid */}
       <View style={s.statsContainer}>

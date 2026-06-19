@@ -76,14 +76,6 @@
         }
       ],
       [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to record dashcam videos.",
-          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone to record audio with videos.",
-          "recordAudioAndroid": true
-        }
-      ],
-      [
         "expo-media-library",
         {
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to save recorded videos.",
@@ -91,8 +83,8 @@
           "isAccessMediaLocationEnabled": true
         }
       ],
-      "expo-build-properties",
-      "expo-video"
+      "expo-video",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
