@@ -7,6 +7,7 @@ import { Feather, FontAwesome } from '@expo/vector-icons';
 import ShareTemplate from '@/components/ShareTemplate';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import Share from 'react-native-share';
 import { Database, DriveData } from '@/services/Database';
 
 let ImagePicker: any = null;
@@ -19,6 +20,7 @@ type VideoDuration = 10 | 20 | 30 | 'dynamic';
 export default function DriveDetailScreen() {
   const { id } = useLocalSearchParams();
   const viewShotRef = useRef<any>(null);
+  const stickerShotRef = useRef<any>(null);
   const [driveData, setDriveData] = useState<DriveData | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [distMode, setDistMode] = useState<'time' | 'distance'>('time');
@@ -34,7 +36,6 @@ export default function DriveDetailScreen() {
   const [segEndPct, setSegEndPct] = useState(100);
   const [segmentName, setSegmentName] = useState('');
 
-  // Recap Stats
   // Recap Stats
   const [heatmapCoords, setHeatmapCoords] = useState<{latitude: number, longitude: number}[]>([]);
 
@@ -53,8 +54,6 @@ export default function DriveDetailScreen() {
       Database.getDriveById(Number(id)).then(data => {
         setDriveData(data);
         setIsFavorite(!!data?.isFavorite);
-        
-        // Mock calculations for recap based on data
       });
     }
   }, [id]);
@@ -93,13 +92,32 @@ export default function DriveDetailScreen() {
 
   const handleShare = async () => {
     try {
-      if (viewShotRef.current?.capture) {
-        const uri = await viewShotRef.current.capture();
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share your drive' });
+      const activeVideo = bgVideo || driveData?.dashcamUri;
+      if (mediaTab === 'video' && activeVideo) {
+        // Share video with sticker to Instagram Stories
+        if (stickerShotRef.current?.capture) {
+          const stickerUri = await stickerShotRef.current.capture();
+          
+          await Share.shareSingle({
+            social: Share.Social.INSTAGRAM_STORIES,
+            appId: '1000000000000000', // Dummy App ID for IG Stories if not set
+            backgroundVideo: activeVideo,
+            stickerImage: stickerUri,
+          });
+        }
+      } else {
+        // Share standard image
+        if (viewShotRef.current?.capture) {
+          const uri = await viewShotRef.current.capture();
+          if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share your drive' });
+          }
         }
       }
-    } catch {}
+    } catch (err: any) {
+      console.log('Share error:', err);
+      Alert.alert('Share Failed', err?.message || 'Could not share to Instagram Stories.');
+    }
   };
 
   const saveSegmentFromHistory = async () => {
@@ -175,10 +193,10 @@ export default function DriveDetailScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#09090F' }}>
       <Stack.Screen options={{ headerShown: false }} />
       
-      {/* Hidden Share Template */}
+      {/* Hidden Sticker Share Template for Video Sharing */}
       <View style={{ position: 'absolute', top: -10000, left: -10000 }}>
-        <ViewShot ref={viewShotRef} options={{ format: "png", quality: 1.0 }}>
-          <ShareTemplate data={driveData} backgroundImageUri={bgImage} heatmapData={heatmapCoords} />
+        <ViewShot ref={stickerShotRef} options={{ format: "png", quality: 1.0 }}>
+          <ShareTemplate data={driveData} heatmapData={heatmapCoords} hideBackground={true} animated={animatedTrack} />
         </ViewShot>
       </View>
 

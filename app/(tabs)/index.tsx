@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, useWindowDimensions, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
 import * as Location from 'expo-location';
 import { Accelerometer } from 'expo-sensors';
+import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
+import { Feather } from '@expo/vector-icons';
+import { useNavigation } from 'expo-router';
 
 // --- SVG Speedometer ---
 function buildSpeedometerSvg(speed: number, maxSpeed: number = 200): string {
@@ -74,6 +77,18 @@ export default function HUDTabScreen() {
   const [speed, setSpeed] = useState(0);
   const [gForce, setGForce] = useState(0.12);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  
+  const navigation = useNavigation();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const [isNavHidden, setIsNavHidden] = useState(false);
+
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: isNavHidden ? { display: 'none' } : { backgroundColor: '#09090F', borderTopWidth: 0, elevation: 0 },
+    });
+  }, [isNavHidden, navigation]);
+
   const tickRef = useRef(0);
   const lastLocation = useRef<Location.LocationObject | null>(null);
   const startTime = useRef<number>(0);
@@ -138,57 +153,75 @@ export default function HUDTabScreen() {
     };
   }, []);
 
-  const speedColor = '#00E5FF'; // Neon blue
-  const speedLabel = speed < 40 ? 'City' : speed < 80 ? 'Suburban' : speed < 120 ? 'Highway' : 'Track';
+  const { hasPermission: hasCameraPermission, requestPermission: requestCameraPermission } = useCameraPermission();
+  const [cameraPosition, setCameraPosition] = useState<'front' | 'back'>('back');
+  const device = useCameraDevice(cameraPosition);
+  const [isCameraActive, setIsCameraActive] = useState(true);
+  
+  useEffect(() => {
+    (async () => {
+      if (!hasCameraPermission) {
+        await requestCameraPermission();
+      }
+    })();
+  }, [hasCameraPermission]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#09090F' }}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
-        {/* Header */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 }}>
-          <View>
-            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700' }}>HUD</Text>
-            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Live Dashboard</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: 'rgba(34,197,94,0.12)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)' }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' }} />
-            <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>LIVE</Text>
-          </View>
+    <View style={{ flex: 1, backgroundColor: '#09090F' }}>
+      <StatusBar hidden={isNavHidden} translucent={true} backgroundColor="transparent" />
+      {/* Background Camera */}
+      {hasCameraPermission && device && isCameraActive ? (
+        <Camera
+          style={StyleSheet.absoluteFill}
+          device={device}
+          isActive={true}
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
+          <Feather name="camera-off" size={48} color="rgba(255,255,255,0.2)" />
+        </View>
+      )}
+
+      {/* Dark Gradient Overlay for better readability */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.1)' }]} pointerEvents="none" />
+
+      <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right', 'bottom']}>
+        {/* Top Right: Camera Toggle & Nav Toggle */}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 20, paddingTop: 12, gap: 12 }}>
+          <Pressable 
+            onPress={() => setIsNavHidden(!isNavHidden)}
+            style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+          >
+            <Feather name={isNavHidden ? "maximize" : "minimize"} size={20} color="white" />
+          </Pressable>
+
+          <Pressable 
+            onPress={() => setCameraPosition(p => p === 'back' ? 'front' : 'back')}
+            style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+          >
+            <Feather name="refresh-ccw" size={20} color="white" />
+          </Pressable>
+
+          <Pressable 
+            onPress={() => setIsCameraActive(!isCameraActive)}
+            style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: isCameraActive ? 'rgba(0,0,0,0.5)' : 'rgba(239,68,68,0.8)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: isCameraActive ? 'rgba(255,255,255,0.2)' : 'rgba(239,68,68,1)' }}
+          >
+            <Feather name={isCameraActive ? "camera" : "camera-off"} size={20} color="white" />
+          </Pressable>
         </View>
 
-        {/* Speedometer */}
-        <View style={{ alignItems: 'center', paddingTop: 24, paddingBottom: 16 }}>
-          <SvgXml xml={buildSpeedometerSvg(speed)} width={320} height={320} />
-        </View>
-
-        {/* Speed Mode Badge */}
-        <View style={{ alignItems: 'center', marginBottom: 12 }}>
-          <View style={{ paddingHorizontal: 16, paddingVertical: 4, borderRadius: 20, backgroundColor: `${speedColor}18`, borderWidth: 1, borderColor: `${speedColor}30` }}>
-            <Text style={{ color: speedColor, fontSize: 12, fontWeight: '600', letterSpacing: 0.5 }}>{speedLabel} Mode</Text>
-          </View>
-        </View>
-
-        {/* Bottom Stats */}
-        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginTop: 8 }}>
-          {[
-            { label: 'G-FORCE', value: `${gForce.toFixed(2)} G` },
-            { label: 'GPS LOCK', value: 'Active' },
-            { label: 'ACCURACY', value: '±3 m' },
-          ].map((s) => (
-            <View key={s.label} style={{ flex: 1, backgroundColor: '#111120', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' }}>
-              <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', letterSpacing: 1, marginBottom: 4 }}>{s.label}</Text>
-              <Text style={{ fontSize: 13, color: 'white', fontWeight: '600' }}>{s.value}</Text>
-            </View>
-          ))}
+        {/* Bottom Right: Speedometer */}
+        <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'flex-end', paddingBottom: 20, paddingRight: 20 }}>
+          <SvgXml xml={buildSpeedometerSvg(speed)} width={140} height={140} />
         </View>
 
         {/* Error Message */}
         {errorMsg && (
-          <View style={{ marginHorizontal: 16, marginTop: 8, padding: 16, backgroundColor: 'rgba(239,68,68,0.15)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)' }}>
-            <Text style={{ color: '#EF4444', textAlign: 'center', fontSize: 13 }}>{errorMsg}</Text>
+          <View style={{ position: 'absolute', bottom: 20, left: 20, right: 180, padding: 12, backgroundColor: 'rgba(239,68,68,0.8)', borderRadius: 12 }}>
+            <Text style={{ color: 'white', textAlign: 'center', fontSize: 12, fontWeight: '600' }}>{errorMsg}</Text>
           </View>
         )}
-      </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }

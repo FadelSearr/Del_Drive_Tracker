@@ -1,4 +1,4 @@
-import DashcamView from '@/components/DashcamView';
+
 import LeafletMap from '@/components/LeafletMap';
 import { Database, SegmentAttempt } from '@/services/Database';
 import { GamificationEngine } from '@/services/GamificationEngine';
@@ -7,7 +7,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
-import { FFmpegKit, ReturnCode } from '@wokcito/ffmpeg-kit-react-native';
+
 import { Accelerometer } from 'expo-sensors';
 import React, { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
@@ -59,13 +59,6 @@ export default function MapTabScreen() {
   const activeZoneRef = React.useRef<{ id: string; startTime: number } | null>(null);
   const [hudMessage, setHudMessage] = useState<{ title: string; subtitle: string; type: 'trap' | 'zone_start' | 'zone_end' } | null>(null);
   
-  // Dashcam State
-  const [isDashcamActive, setIsDashcamActive] = useState(false);
-  const [dashcamUri, setDashcamUri] = useState<string | null>(null);
-  const dashcamUriRef = React.useRef<string | null>(null);
-  const telemetryDataRef = React.useRef<{time: number, speed: number}[]>([]);
-  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
-  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
 
 
   const updateActiveZoneState = (zone: { id: string; startTime: number } | null) => {
@@ -485,78 +478,7 @@ export default function MapTabScreen() {
       console.log("Error stopping background location", e);
     }
 
-    // Background process for Gallery saving & FFmpeg Overlay
-    (async () => {
-      const uriToSave = dashcamUriRef.current;
-      const telemetry = telemetryDataRef.current;
-      
-      if (uriToSave) {
-        setIsProcessingVideo(true);
-        try {
-          console.log("Parent processing dashcam save:", uriToSave);
-          const { status } = await MediaLibrary.requestPermissionsAsync();
-          if (status === 'granted') {
-            
-            let finalOutputUri = uriToSave;
-            
-            if (telemetry && telemetry.length > 0) {
-              console.log("Telemetry found, starting FFmpeg burn-in...");
-              
-              // 1. Generate SRT File
-              let srtContent = '';
-              for (let i = 0; i < telemetry.length; i++) {
-                const current = telemetry[i];
-                const nextTime = i < telemetry.length - 1 ? telemetry[i+1].time : current.time + 1;
-                
-                const formatTime = (secs: number) => {
-                  const d = new Date(secs * 1000);
-                  return `00:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')},000`;
-                };
-                
-                srtContent += `${i + 1}\n`;
-                srtContent += `${formatTime(current.time)} --> ${formatTime(nextTime)}\n`;
-                srtContent += `SPEED: ${current.speed} KM/H\n\n`;
-              }
-              
-              const srtPath = `${FileSystem.cacheDirectory}overlay.srt`.replace('file://', '');
-              await FileSystem.writeAsStringAsync(`${FileSystem.cacheDirectory}overlay.srt`, srtContent);
-              
-              // 2. FFmpeg Command
-              const outputPath = `${FileSystem.cacheDirectory}processed_dashcam_${Date.now()}.mp4`.replace('file://', '');
-              
-              // drawtext is tricky with fonts on mobile, so we use the subtitles filter which is built-in
-              const command = `-y -i "${uriToSave.replace('file://', '')}" -vf "subtitles='${srtPath}':force_style='FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,MarginV=50'" -c:a copy "${outputPath}"`;
-              
-              console.log("Executing FFmpeg...");
-              const session = await FFmpegKit.execute(command);
-              const returnCode = await session.getReturnCode();
-              
-              if (ReturnCode.isSuccess(returnCode)) {
-                console.log("FFmpeg success!");
-                finalOutputUri = `file://${outputPath}`;
-              } else {
-                console.error("FFmpeg failed", await session.getLogs());
-              }
-            }
 
-            // Fix extension if needed
-            if (!finalOutputUri.toLowerCase().endsWith('.mp4')) {
-              const newPath = `${finalOutputUri}.mp4`;
-              await FileSystem.moveAsync({ from: finalOutputUri, to: newPath });
-              finalOutputUri = newPath;
-            }
-            const asset = await MediaLibrary.createAssetAsync(finalOutputUri);
-            console.log("PARENT: Video successfully saved to gallery:", asset.id);
-          }
-        } catch (err) {
-          console.error("PARENT: Failed to save to gallery:", err);
-        } finally {
-          setIsProcessingVideo(false);
-          dashcamUriRef.current = null;
-          telemetryDataRef.current = [];
-        }
-      }
-    })();
 
     router.push({
       pathname: '/drive/celebration', params: { driveId: newDrive.id, newlyAchieved: achievedStr } });
@@ -570,79 +492,39 @@ export default function MapTabScreen() {
   return (
     <View style={styles.container}>
         {location ? (
-          isDashcamActive ? (
-            <DashcamView 
-              isRecording={isRecordingVideo}
-              speed={currentSpeed}
-              gForce={maxDec > maxAcc ? maxDec / 9.81 : maxAcc / 9.81}
-                onRecordingComplete={(uri, telemetry) => {
-                  console.log("Dashcam Recording Saved to Ref:", uri);
-                  dashcamUriRef.current = uri;
-                  if (telemetry) {
-                    telemetryDataRef.current = telemetry;
-                  }
-                  setDashcamUri(uri);
-                }}
-
-            />
-          ) : (
-            <LeafletMap 
-              userLocation={{ latitude: location.coords.latitude, longitude: location.coords.longitude }}
-              coordinates={routeCoordinates}
-              mapMode={mapMode}
-              showHeatmap={showHeatmap}
-              heatmapData={heatmapCoords}
-            />
-          )
+          <LeafletMap 
+            userLocation={{ latitude: location.coords.latitude, longitude: location.coords.longitude }}
+            coordinates={routeCoordinates}
+            mapMode={mapMode}
+            showHeatmap={showHeatmap}
+            heatmapData={heatmapCoords}
+          />
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#09090F' }}>
             <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>Locating...</Text>
           </View>
         )}
 
-      {isProcessingVideo && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.8)', alignItems: 'center', justifyContent: 'center', zIndex: 100 }]}>
-          <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginBottom: 12 }}>Processing Video...</Text>
-          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Applying speed overlay. Do not close app.</Text>
-        </View>
-      )}
+
 
       {/* Floating UI Elements */}
       <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <View style={styles.headerHudContainer}>
-          {/* Dashcam Toggle */}
-          <Pressable 
-            style={[
-              styles.dashcamToggle, 
-              isDashcamActive && styles.dashcamToggleActive,
-              { marginTop: isDashcamActive ? 50 : 0 } // Dynamic margin to avoid READY text
-            ]}
-            onPress={() => {
-
-              if (isTracking) return; 
-              setIsDashcamActive(!isDashcamActive);
-            }}
-          >
-            <Feather name={isDashcamActive ? "map" : "video"} size={20} color="white" />
-          </Pressable>
-
-          {/* Top HUD — Speed (Hidden in Dashcam Mode) */}
-          {!isDashcamActive && (
+          {/* Top HUD — Speed (Centered) */}
+          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, alignItems: 'center', pointerEvents: 'none' }}>
             <View style={styles.topHud}>
               <Text style={{ fontSize: 38, fontWeight: '800', color: 'white', letterSpacing: -1 }}>{currentSpeed}</Text>
               <Text style={{ fontSize: 9, fontWeight: '700', color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>KM/H</Text>
             </View>
-          )}
+          </View>
 
-          {/* Status badge (Hidden in Dashcam Mode) */}
-          {!isDashcamActive && (
-            <View style={styles.statusBadge}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusColor }} />
-                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>{statusLabel.toUpperCase()}</Text>
-              </View>
+          {/* Status badge (Right aligned) */}
+          <View style={[styles.statusBadge, { marginLeft: 'auto' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusColor }} />
+              <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>{statusLabel.toUpperCase()}</Text>
             </View>
-          )}
+          </View>
         </View>
 
 

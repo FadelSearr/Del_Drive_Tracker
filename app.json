@@ -3,7 +3,7 @@
     "name": "Del_Road",
     "slug": "Del_Road",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "delroad",
     "userInterfaceStyle": "automatic",

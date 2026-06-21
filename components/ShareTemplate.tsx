@@ -10,6 +10,7 @@ interface ShareTemplateProps {
   videoUri?: string;
   heatmapData?: { latitude: number; longitude: number; speed?: number }[];
   animated?: boolean;
+  hideBackground?: boolean;
 }
 
 const getNormalizedPoints = (
@@ -65,6 +66,7 @@ export default function ShareTemplate({
   videoUri,
   heatmapData = [],
   animated: shouldAnimate = false,
+  hideBackground = false,
 }: ShareTemplateProps) {
   const width = 1080 / 3;   // 360
   const height = 1920 / 3;  // 640
@@ -139,33 +141,39 @@ export default function ShareTemplate({
   });
 
   return (
-    <View style={[s.container, { width, height }]}>
+    <View style={[s.container, { width, height, backgroundColor: hideBackground ? 'transparent' : '#0A0A12' }]}>
+      {/* Dark Overlay for Video Sticker */}
+      {hideBackground && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.75)' }} />
+      )}
+      
       {/* Background */}
-      {backgroundImageUri ? (
-        <>
-          <Image source={{ uri: backgroundImageUri }} style={s.bgImage} />
-          <View style={s.bgOverlay} />
-        </>
-      ) : videoUri ? (
-        <>
-          <VideoView
-            player={player}
-            style={s.bgImage}
-            contentFit="cover"
-            nativeControls={false}
-          />
-          <View style={s.bgOverlay} />
-          
-        </>
-      ) : (
-        <View style={s.bgSolid}>
-          <View style={s.bgGrid}>
-            {Array.from({ length: 48 }).map((_, i) => (
-              <View key={i} style={[s.gridCell, { width: width / 4, height: width / 4 },
-                i % 2 === 0 ? s.bgWhite : s.bgTransparent]} />
-            ))}
+      {!hideBackground && (
+        backgroundImageUri ? (
+          <>
+            <Image source={{ uri: backgroundImageUri }} style={s.bgImage} />
+            <View style={s.bgOverlay} />
+          </>
+        ) : videoUri ? (
+          <>
+            <VideoView
+              player={player}
+              style={s.bgImage}
+              contentFit="cover"
+              nativeControls={false}
+            />
+            <View style={s.bgOverlay} />
+          </>
+        ) : (
+          <View style={s.bgSolid}>
+            <View style={s.bgGrid}>
+              {Array.from({ length: 48 }).map((_, i) => (
+                <View key={i} style={[s.gridCell, { width: width / 4, height: width / 4 },
+                  i % 2 === 0 ? s.bgWhite : s.bgTransparent]} />
+              ))}
+            </View>
           </View>
-        </View>
+        )
       )}
 
 
