@@ -1,48 +1,77 @@
-# 🚗 Del Road (Mobile Drive Tracker)
+# 🏎️ Del Road
 
-Del Road adalah aplikasi pelacakan perjalanan premium dengan antarmuka mode gelap (Dark Theme) modern, dirancang untuk memberikan analitik mengemudi secara real-time dan gamifikasi interaktif.
+Del Road is a high-performance React Native (Expo) application designed to track your drives, record dashcam footage, and analyze your driving telemetry in real-time. Whether you are doing casual drives, road trips, or track days, Del Road keeps a beautiful log of your journeys.
 
-## ✨ Fitur Utama
+![Del Road Banner](https://img.shields.io/badge/React_Native-Expo-000?style=for-the-badge&logo=react)
+![Supabase](https://img.shields.io/badge/Supabase-Database-3ECF8E?style=for-the-badge&logo=supabase)
 
-### 1. HUD (Head-Up Display) Real-time
-*   **Speedometer Interaktif:** Desain melingkar kustom (SVG) yang bereaksi terhadap kecepatan Anda secara real-time.
-*   **G-Force Crosshair:** Indikator visual titik merah yang bergerak sesuai dengan gaya G-Force akselerasi dan pengereman perangkat.
-*   **Kompas Pintar:** Jarum kompas visual yang selalu menunjukkan arah laju kendaraan Anda.
-*   **Peringatan Batas Kecepatan:** Warna indikator kecepatan berubah saat Anda mendekati atau melewati batas kecepatan.
+## ✨ Features
 
-### 2. Peta & Perekaman Perjalanan (Map)
-*   **Perekaman Akurat:** Tombol bergradien tebal untuk Memulai, Menjeda, dan Mengakhiri perjalanan dengan mudah.
-*   **Live Overlay:** Menampilkan status jalan, batas kecepatan, dan waktu saat ini dengan visibilitas tinggi saat merekam di atas peta.
-*   **Zona & Cuaca:** Pemantauan kondisi sekitar secara langsung.
+- **📍 Real-time Telemetry:** Live tracking of Speed, GPS coordinates, Accuracy, and G-Force.
+- **🎥 Built-in Dashcam:** Record front or rear-facing video while driving.
+- **🕶️ HUD Mode (Head-Up Display):** A stunning, neon-styled digital speedometer overlay designed for driving. Supports full-screen landscape & portrait modes.
+- **🗺️ Interactive Maps:** View your recorded drives with a heatmap of your speed on interactive maps.
+- **📱 Instagram Stories Integration:** Share your drives directly to Instagram Stories! Your drive data is overlaid as an interactive, transparent sticker on top of your recorded dashcam video.
+- **☁️ Cloud Sync:** Securely save your drive history and telemetry to the cloud using Supabase and Google Sign-In.
 
-### 3. Riwayat Perjalanan (History)
-*   **Kartu Perjalanan Detail:** Menampilkan jarak, durasi, kecepatan rata-rata, dan waktu perjalanan dengan desain garis-garis neon.
-*   **Preview Rute Peta:** Cuplikan rute mini (Leaflet map) untuk setiap perjalanan yang tersimpan tanpa harus membuka detail.
-*   **Tampilan Kalender / Aktivitas:** Beralih antara daftar semua aktivitas dan ringkasan statistik harian.
+## 🛠️ Tech Stack
 
-### 4. Detail Perjalanan Lengkap & Fitur Berbagi (Share Card)
-*   **Metrik Telematika Lengkap:** Menganalisis Jumlah Pengereman, G-Force Tertinggi, Akselerasi Maksimal, Perubahan Jalur, dan lainnya.
-*   **Distribusi Kecepatan:** Grafik batang multi-segmen yang menunjukkan berapa lama dan sejauh mana Anda melaju di rentang kecepatan tertentu (berdasarkan waktu atau jarak).
-*   **Share Card Generator:** Menyimpan layar ringkasan mengemudi yang indah menjadi gambar (Image PNG) siap bagikan ke media sosial. Anda dapat mengganti latar belakang (background) kartu ringkasan ini dengan foto galeri Anda sendiri.
+- **Framework:** [Expo](https://expo.dev/) (React Native)
+- **Styling:** Native StyleSheet + Tailwind CSS
+- **Backend & Auth:** [Supabase](https://supabase.com/)
+- **Maps:** `react-native-maps`
+- **Camera:** `react-native-vision-camera`
+- **Sensors:** `expo-location`, `expo-sensors`
+- **Sharing:** `react-native-share`, `expo-sharing`
 
-### 5. Wawasan & Gamifikasi (Insights)
-*   **Dashboard Analitik:** Menyajikan metrik total seperti Total Jarak (km), Durasi (jam), Kecepatan Maksimum, dan G-Force Maksimum.
-*   **Sistem Milestone:** Berbagai pencapaian (Achievement) otomatis terbuka berdasarkan seberapa jauh atau seberapa sering Anda mengemudi.
-*   **Streak Mengemudi:** Menghitung jumlah hari berturut-turut Anda mengemudi dengan indikator ikon api.
+## 🚀 Getting Started
 
-### 6. Garasi Virtual (Garage)
-*   **Manajemen Kendaraan:** Tambahkan kendaraan yang Anda kendarai.
-*   **Sistem Rating Elo:** Skor gaya mengemudi dan kemampuan telematika yang disimulasikan seperti poin rank game, lengkap dengan progress bar.
-*   **Dark Modal UI:** UI input kustom premium untuk menambahkan kendaraan baru ke garasi.
+### Prerequisites
 
-### 7. Profil Pengemudi (Profile)
-*   **Identitas Pengemudi (Driver ID):** Avatar dengan inisial dan lencana "PRO".
-*   **Progress Pencapaian (Achievements Bar):** Bar persentase penyelesaian berbagai milestone dan koleksi piala visual (Emoji Badges).
-*   **Quick Actions:** Akses cepat ke pengaturan dan fitur eksport data kendaraan.
+- Node.js (>= 18.x)
+- npm or yarn
+- Expo CLI
+- Supabase Project (for backend)
+- Google Cloud Console Project (for Google Sign-In Client ID)
 
-### 8. Layar Perayaan (Celebration Screen)
-*   **Hadiah Pasca-Berkendara:** Setiap selesai berkendara, sistem mengecek jika ada *Milestone* baru yang tercapai atau *Streak* hari ini berhasil diperbarui.
-*   **Animasi Sukses:** Tampilan UI bergradien neon hijau khusus sebagai apresiasi setelah log perjalanan.
+### Installation
 
----
-**Teknologi:** React Native, Expo, NativeWind (Tailwind CSS), Leaflet Peta, Expo Sensors (GPS & Akselerometer), ViewShot (Share).
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/del-road.git
+   cd del-road
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment Variables**
+   Set up your Supabase URL, Supabase Anon Key, and Google Web Client ID in the respective service files.
+
+4. **Start the development server**
+   ```bash
+   npx expo start
+   ```
+
+5. **Build APK for Android (EAS)**
+   ```bash
+   eas build --platform android --profile preview
+   ```
+
+## 📸 Screenshots
+
+*(Add your screenshots here)*
+
+## 🔐 Google Sign-In Configuration
+
+To avoid `DEVELOPER_ERROR` on Android:
+1. Generate an APK using `eas build`.
+2. Run `eas credentials` to retrieve your Android Keystore's **SHA-1 Fingerprint**.
+3. Go to Google Cloud Console > Credentials.
+4. Create an **Android OAuth Client ID** using your package name (`com.anonymous.Del_Road`) and the SHA-1 Fingerprint.
+
+## 📄 License
+
+This project is licensed under the MIT License.
