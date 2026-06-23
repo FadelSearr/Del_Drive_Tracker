@@ -144,7 +144,7 @@ export default function ShareTemplate({
     <View style={[s.container, { width, height, backgroundColor: hideBackground ? 'transparent' : '#0A0A12' }]}>
       {/* Dark Overlay for Video Sticker */}
       {hideBackground && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.75)' }} />
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)' }} />
       )}
       
       {/* Background */}

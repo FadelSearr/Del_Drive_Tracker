@@ -9,7 +9,7 @@ import * as Location from 'expo-location';
 import { router } from 'expo-router';
 
 import { Accelerometer } from 'expo-sensors';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 const LOCATION_TASK_NAME = 'background-location-task';
@@ -119,6 +119,12 @@ export default function MapTabScreen() {
   const [stopsDurationSecs, setStopsDurationSecs] = useState(0);
   const [isCurrentlyStopped, setIsCurrentlyStopped] = useState(false);
   const [laneChangesCount, setLaneChangesCount] = useState(0);
+
+  // Dashcam state
+  const [isDashcamActive, setIsDashcamActive] = useState(false);
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+  const [dashcamUri, setDashcamUri] = useState<string | null>(null);
+  const dashcamUriRef = useRef<string | null>(null);
 
   // Refs to avoid restarting the timer / GPS watcher on every state change
   const locationRef = React.useRef<Location.LocationObject | null>(null);
